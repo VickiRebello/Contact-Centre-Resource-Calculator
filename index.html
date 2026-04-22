@@ -75,6 +75,10 @@
       if (isNaN(n) || !isFinite(n)) return "—";
       return Number.isInteger(n) ? n : n.toFixed(2);
     }
+    function ceilInt(n) {
+      if (isNaN(n) || !isFinite(n) || n <= 0) return null;
+      return Math.ceil(n);
+    }
     function ceil2(n) {
       return isNaN(n) || !isFinite(n) ? 0 : Math.ceil(n * 100) / 100;
     }
@@ -338,7 +342,7 @@
                           <tr>
                             <th className="hc">Hour</th>
                             {DAYS.map(d => <th key={d} style={{ minWidth: 100 }}>{d}</th>)}
-                            <th style={{ minWidth: 70, color: "#e8590c" }}>Row max</th>
+                            <th style={{ minWidth: 70, color: "#e8590c" }}>Total</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -357,21 +361,21 @@
                                         ? <input type="number" min={0} className="vi" style={{ width: "100%", background: "transparent", border: "1px solid rgba(0,0,0,0.08)" }}
                                             value={volumes[d][h]} onChange={e => setVol(d, h, e.target.value)} placeholder="—" />
                                         : val > 0
-                                          ? <div className="ci">{formatNum(val)}</div>
+                                          ? <div className="ci">{ceilInt(val)}</div>
                                           : <div className="ce">—</div>
                                       }
                                     </td>
                                   );
                                 })}
                                 <td style={{ background: rowMax > 0 ? "rgba(232,89,12,0.07)" : "transparent" }}>
-                                  {rowMax > 0 ? <div className="ci" style={{ color: "#e8590c" }}>{resultView === "agents" ? formatNum(rowMax) : rowMax}</div> : <div className="ce">—</div>}
+                                  {rowMax > 0 ? <div className="ci" style={{ color: "#e8590c" }}>{resultView === "agents" ? Math.ceil(rowVals.reduce((a,b)=>a+b,0)) : rowVals.reduce((a,b)=>a+b,0)}</div> : <div className="ce">—</div>}
                                 </td>
                               </tr>
                             );
                           })}
                           <tr className="tr-tot">
                             <td className="hl" style={{ fontWeight: 700, fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "#5a524c" }}>
-                              {resultView === "agents" ? "Peak agents" : "Day total"}
+                              Total
                             </td>
                             {DAYS.map(d => {
                               const val = resultView === "agents"
@@ -379,13 +383,13 @@
                                 : results[d]._dayTotal;
                               return (
                                 <td key={d} style={{ padding: "8px", color: val > 0 ? "#e8590c" : "#c8c0b8" }}>
-                                  {val > 0 ? (resultView === "agents" ? formatNum(val) : val.toLocaleString()) : "—"}
+                                  {val > 0 ? (resultView === "agents" ? Math.ceil(val) : val.toLocaleString()) : "—"}
                                 </td>
                               );
                             })}
                             <td style={{ padding: "8px", color: "#e8590c" }}>
                               {resultView === "agents"
-                                ? formatNum(Math.max(0, ...DAYS.map(d => selectedTeam === null ? results[d]._peakAgents : Math.max(0, ...HOURS.map(h => results[d][h].teamSplit[selectedTeam]?.agents || 0)))))
+                                ? Math.ceil(DAYS.reduce((s,d) => s + (selectedTeam === null ? results[d]._peakAgents : Math.max(0, ...HOURS.map(h => results[d][h].teamSplit[selectedTeam]?.agents || 0))), 0))
                                 : grandTotal.toLocaleString()}
                             </td>
                           </tr>

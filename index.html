@@ -98,6 +98,7 @@
       const [uploadError, setUploadError] = useState("");
       const fileRef = useRef();
       const [shiftRules, setShiftRules] = useState({ minHours: "", maxHours: "" });
+      const [activeWindowFilter, setActiveWindowFilter] = useState(null); // null = show all
       const [teamWindows, setTeamWindows] = useState([
         { id: 1, name: "Day Reception",            color: "#1971c2", days: [0,1,2,3,4], startHour: 9,  endHour: 17, teamIdx: null },
         { id: 2, name: "Out of Hours (Mon–Thu)",  color: "#e8590c", days: [0,1,2,3],   startHour: 17, endHour: 25, teamIdx: null },
@@ -607,21 +608,88 @@
                     </div>
                   </div>
 
+                  {/* ── Grand total summary bar ── */}
+                  {(() => {
+                    const allTotals = teamWindows.map(tw => {
+                      const { coversDays, dayResults } = getWindowResults(tw);
+                      const total = coversDays.reduce((s, day) => s + dayResults[day].totalAgentHours, 0);
+                      return { id: tw.id, name: tw.name, color: tw.color, total };
+                    });
+                    const grandTotal = allTotals.reduce((s, t) => s + t.total, 0);
+                    const filteredTotal = activeWindowFilter !== null
+                      ? (allTotals.find(t => t.id === activeWindowFilter)?.total || 0)
+                      : grandTotal;
+                    return (
+                      <div style={{ background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10, padding: "14px 18px", marginBottom: 16 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                          <div>
+                            <div className="lxs" style={{ marginBottom: 2 }}>Total Agent-Hours</div>
+                            <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                              <span style={{ fontSize: 28, fontWeight: 700, color: activeWindowFilter !== null ? (allTotals.find(t => t.id === activeWindowFilter)?.color || "#e8590c") : "#1a1a1a" }}>{filteredTotal}</span>
+                              <span style={{ fontSize: 13, color: "#a09488" }}>agent-hrs {activeWindowFilter !== null ? "(filtered)" : "across all windows"}</span>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            <span style={{ fontSize: 11.5, color: "#8a8178", fontWeight: 500 }}>Filter:</span>
+                            <button
+                              className={`tgb ${activeWindowFilter === null ? "on" : ""}`}
+                              onClick={() => setActiveWindowFilter(null)}>All</button>
+                            {allTotals.map(t => (
+                              <button key={t.id}
+                                className={`tgb ${activeWindowFilter === t.id ? "on" : ""}`}
+                                style={activeWindowFilter === t.id ? { background: t.color, borderColor: t.color } : {}}
+                                onClick={() => setActiveWindowFilter(activeWindowFilter === t.id ? null : t.id)}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                                  <span style={{ width: 8, height: 8, borderRadius: 2, background: t.color, display: "inline-block", flexShrink: 0 }} />
+                                  {t.name}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {/* Stacked bar */}
+                        <div style={{ height: 8, background: "#f5f3f0", borderRadius: 4, overflow: "hidden", display: "flex" }}>
+                          {allTotals.filter(t => t.total > 0).map(t => (
+                            <div key={t.id} style={{
+                              height: "100%",
+                              width: `${grandTotal > 0 ? (t.total / grandTotal) * 100 : 0}%`,
+                              background: t.color,
+                              opacity: activeWindowFilter === null || activeWindowFilter === t.id ? 1 : 0.2,
+                              transition: "opacity 0.2s",
+                            }} />
+                          ))}
+                        </div>
+                        {grandTotal > 0 && (
+                          <div style={{ display: "flex", gap: 14, marginTop: 8, flexWrap: "wrap" }}>
+                            {allTotals.filter(t => t.total > 0).map(t => (
+                              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, opacity: activeWindowFilter === null || activeWindowFilter === t.id ? 1 : 0.4, transition: "opacity 0.2s" }}>
+                                <div style={{ width: 8, height: 8, borderRadius: 2, background: t.color, flexShrink: 0 }} />
+                                <span style={{ color: "#5a524c" }}>{t.name}:</span>
+                                <span style={{ fontWeight: 600, color: t.color }}>{t.total}</span>
+                                <span style={{ color: "#a09488" }}>({grandTotal > 0 ? Math.round((t.total/grandTotal)*100) : 0}%)</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* Team windows + results — one row per window */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                      <div className="lxs" style={{ marginBottom: 0 }}>Team Windows &amp; Suggested Shifts</div>
+                      <div className="lxs" style={{ marginBottom: 0 }}>Team Windows &amp; Suggested Shift Patterns</div>
                       <button className="atb" onClick={() => setTeamWindows(tw => [...tw, {
-                        id: Date.now(), name: "New Window", color: "#888",
+                        id: Date.now(), name: "New Team Window", color: "#888",
                         days: [0,1,2,3,4], startHour: 9, endHour: 17, teamIdx: null
-                      }])}>+ Add window</button>
+                      }])}>+ Add team window</button>
                     </div>
                     {teamWindows.length === 0 && (
                       <div style={{ padding: 32, textAlign: "center", color: "#a09488", fontSize: 13, background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10 }}>
-                        Add a team window to see shift suggestions
+                        Add a team window to see suggested shift patterns
                       </div>
                     )}
-                    {teamWindows.map((tw, wi) => {
+                    {teamWindows.filter(tw => activeWindowFilter === null || tw.id === activeWindowFilter).map((tw, wi) => {
                       const { coversDays, dayResults } = getWindowResults(tw);
                       return (
                         <div key={tw.id} style={{ background: "#fff", border: `1.5px solid ${tw.color}22`, borderLeft: `4px solid ${tw.color}`, borderRadius: 10, overflow: "hidden" }}>
@@ -701,17 +769,30 @@
                               </div>
                             </div>
                             {/* Results for this window */}
-                            <div style={{ flex: 1, padding: 14, display: "flex", gap: 10, flexWrap: "wrap", alignContent: "flex-start" }}>
-                              {coversDays.length === 0
-                                ? <div style={{ fontSize: 12, color: "#c0b8b0", alignSelf: "center", padding: "0 12px" }}>Select days to see shifts</div>
-                                : coversDays.map(day => (
-                                    <ShiftCard key={day} day={day}
-                                      shifts={dayResults[day].shifts}
-                                      totalAgentHours={dayResults[day].totalAgentHours}
-                                      windowStart={tw.startHour} windowEnd={tw.endHour}
-                                      color={tw.color} />
-                                  ))
-                              }
+                            <div style={{ flex: 1, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                                {coversDays.length === 0
+                                  ? <div style={{ fontSize: 12, color: "#c0b8b0", alignSelf: "center", padding: "0 12px" }}>Select days to see shifts</div>
+                                  : coversDays.map(day => (
+                                      <ShiftCard key={day} day={day}
+                                        shifts={dayResults[day].shifts}
+                                        totalAgentHours={dayResults[day].totalAgentHours}
+                                        windowStart={tw.startHour} windowEnd={tw.endHour}
+                                        color={tw.color} />
+                                    ))
+                                }
+                              </div>
+                              {coversDays.length > 0 && (() => {
+                                const windowTotal = coversDays.reduce((s, day) => s + dayResults[day].totalAgentHours, 0);
+                                return (
+                                  <div style={{ borderTop: "1px solid #f0ede8", paddingTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                                    <div style={{ width: 10, height: 10, borderRadius: 2, background: tw.color, flexShrink: 0 }} />
+                                    <span style={{ fontSize: 12, color: "#5a524c", fontWeight: 600 }}>{tw.name} total:</span>
+                                    <span style={{ fontSize: 15, fontWeight: 700, color: tw.color }}>{windowTotal}</span>
+                                    <span style={{ fontSize: 12, color: "#a09488" }}>agent-hrs across {coversDays.length} day{coversDays.length !== 1 ? "s" : ""}</span>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>

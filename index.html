@@ -523,13 +523,22 @@
                   </div>
                 </div>
 
-                {/* Calculation method */}
-                <div style={{ marginTop: 16, background: "#fff8f5", border: "1px solid #fbd5be", borderRadius: 8, padding: 15, fontSize: 12, color: "#8a8178", lineHeight: 1.9 }}>
-                  <div className="lxs" style={{ marginBottom: 5 }}>Calculation Method</div>
-                  <b style={{ color: "#5a524c" }}>Productive mins/agent/hr</b> = 60 × (1 − shrinkage%) − admin time<br />
-                  <b style={{ color: "#5a524c" }}>Agents required</b> = (Calls × AHT) ÷ Productive mins/agent/hr<br />
-                  <b style={{ color: "#5a524c" }}>Team agents</b> = Agents required × team split %
+                {/* Calculation method — full width below table */}
+                <div style={{ marginTop: 14, background: "#fff8f5", border: "1px solid #fbd5be", borderRadius: 8, padding: "14px 22px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#e8590c", marginBottom: 4 }}>Step 1</div>
+                    <div style={{ fontSize: 12, color: "#5a524c", lineHeight: 1.6 }}><b>Productive mins / agent / hr</b><br />= 60 × (1 − shrinkage%) − admin time</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#e8590c", marginBottom: 4 }}>Step 2</div>
+                    <div style={{ fontSize: 12, color: "#5a524c", lineHeight: 1.6 }}><b>Agents required</b><br />= (Calls × AHT) ÷ Productive mins / agent / hr</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#e8590c", marginBottom: 4 }}>Step 3</div>
+                    <div style={{ fontSize: 12, color: "#5a524c", lineHeight: 1.6 }}><b>Team agents</b><br />= Agents required × team split %</div>
+                  </div>
                 </div>
+
               </div>
             )}
 
@@ -637,121 +646,85 @@
                   ) : (
                     <div style={{ ...card, overflow: "hidden" }}>
                       <div style={{ overflowX: "auto" }}>
-                        <table className="wt">
+                        <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
                           <thead>
-                            <tr>
-                              <th className="hc" style={{ minWidth: 100 }}>Hour</th>
-                              {DAYS.map(d => <th key={d} style={{ minWidth: 90 }}>{d}</th>)}
-                              <th style={{ minWidth: 70, color: "#e8590c" }}>Total</th>
+                            <tr style={{ background: "#f5f3f0", position: "sticky", top: 0, zIndex: 2 }}>
+                              <th style={{ padding: "8px 14px", textAlign: "left", fontSize: 10.5, fontWeight: 700, color: "#a09488", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1.5px solid #e5e2dd", position: "sticky", left: 0, background: "#f5f3f0", zIndex: 3, whiteSpace: "nowrap" }}>Hour</th>
+                              {DAYS.map(d => (
+                                <th key={d} colSpan={3} style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "#1a1a1a", borderBottom: "1.5px solid #e5e2dd", borderLeft: "1px solid #e5e2dd", minWidth: 150 }}>{d}</th>
+                              ))}
+                              <th colSpan={3} style={{ padding: "8px 6px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "#e8590c", borderBottom: "1.5px solid #e5e2dd", borderLeft: "1px solid #e5e2dd", minWidth: 120 }}>Total</th>
+                            </tr>
+                            <tr style={{ background: "#faf9f7", position: "sticky", top: "33px", zIndex: 2 }}>
+                              <th style={{ position: "sticky", left: 0, background: "#faf9f7", zIndex: 3, borderBottom: "1px solid #e5e2dd" }} />
+                              {[...DAYS, "Total"].map(d => (
+                                <React.Fragment key={d}>
+                                  <th style={{ padding: "3px 6px", fontSize: 10, fontWeight: 600, color: "#e8590c", textAlign: "center", borderBottom: "1px solid #e5e2dd", borderLeft: "1px solid #ece8e2" }}>Req</th>
+                                  <th style={{ padding: "3px 6px", fontSize: 10, fontWeight: 600, color: "#1971c2", textAlign: "center", borderBottom: "1px solid #e5e2dd" }}>Cur</th>
+                                  <th style={{ padding: "3px 6px", fontSize: 10, fontWeight: 600, color: "#8a8178", textAlign: "center", borderBottom: "1px solid #e5e2dd" }}>Gap</th>
+                                </React.Fragment>
+                              ))}
                             </tr>
                           </thead>
                           <tbody>
-                            {HOURS.map(h => {
+                            {HOURS.map((h, hi) => {
                               const rowRequired = DAYS.map(d => gapData[d][h].required);
                               const rowCurrent = DAYS.map(d => gapData[d][h].current);
-                              const rowGaps = DAYS.map(d => gapData[d][h].gap);
-                              const anyData = rowGaps.some(g => g !== null);
+                              const anyData = DAYS.some(d => gapData[d][h].gap !== null);
                               if (!anyData && rowRequired.every(r => r === 0)) return null;
                               const totalReq = rowRequired.reduce((a,b)=>a+b,0);
                               const totalCur = rowCurrent.reduce((a,b)=>a+b,0);
                               const totalGapRow = totalCur - totalReq;
                               return (
-                                <React.Fragment key={h}>
-                                  {/* Required row */}
-                                  <tr style={{ background: "#fafaf8" }}>
-                                    <td className="hl" style={{ fontSize: 10.5 }}>
-                                      <div style={{ fontWeight: 700, color: "#1a1a1a" }}>{h}</div>
-                                      <div style={{ fontSize: 10, color: "#e8590c", fontWeight: 600 }}>Required</div>
-                                    </td>
-                                    {DAYS.map(d => (
-                                      <td key={d} style={{ padding: "3px 6px" }}>
-                                        {gapData[d][h].required > 0
-                                          ? <div style={{ fontSize: 11.5, fontWeight: 600, color: "#e8590c", textAlign: "center" }}>{gapData[d][h].required}</div>
-                                          : <div className="ce">—</div>}
-                                      </td>
-                                    ))}
-                                    <td style={{ padding: "3px 6px", textAlign: "center", fontSize: 11.5, fontWeight: 600, color: "#e8590c" }}>
-                                      {totalReq > 0 ? totalReq : "—"}
-                                    </td>
-                                  </tr>
-                                  {/* Current row */}
-                                  <tr style={{ background: "#f5f8ff" }}>
-                                    <td className="hl" style={{ paddingTop: 2, paddingBottom: 2 }}>
-                                      <div style={{ fontSize: 10, color: "#1971c2", fontWeight: 600 }}>Current</div>
-                                    </td>
-                                    {DAYS.map(d => (
-                                      <td key={d} style={{ padding: "3px 6px" }}>
-                                        {gapData[d][h].current > 0
-                                          ? <div style={{ fontSize: 11.5, fontWeight: 600, color: "#1971c2", textAlign: "center" }}>{gapData[d][h].current}</div>
-                                          : <div className="ce">—</div>}
-                                      </td>
-                                    ))}
-                                    <td style={{ padding: "3px 6px", textAlign: "center", fontSize: 11.5, fontWeight: 600, color: "#1971c2" }}>
-                                      {totalCur > 0 ? totalCur : "—"}
-                                    </td>
-                                  </tr>
-                                  {/* Gap row */}
-                                  <tr style={{ borderBottom: "2px solid #ece8e2" }}>
-                                    <td className="hl" style={{ paddingTop: 2, paddingBottom: 6 }}>
-                                      <div style={{ fontSize: 10, color: "#8a8178", fontWeight: 600 }}>Gap</div>
-                                    </td>
-                                    {DAYS.map(d => {
-                                      const g = gapData[d][h].gap;
-                                      return (
-                                        <td key={d} style={{ background: gapColor(g), padding: "3px 6px" }}>
-                                          {g !== null
-                                            ? <div style={{ fontSize: 11.5, fontWeight: 700, color: gapTextColor(g), textAlign: "center" }}>
-                                                {g === 0 ? "=" : (g > 0 ? "+" : "") + g}
-                                              </div>
-                                            : <div className="ce">—</div>}
+                                <tr key={h} style={{ background: hi % 2 === 0 ? "#fff" : "#fdfcfb" }}>
+                                  <td style={{ padding: "6px 14px", fontWeight: 600, fontSize: 12, color: "#5a524c", whiteSpace: "nowrap", position: "sticky", left: 0, background: hi % 2 === 0 ? "#fff" : "#fdfcfb", zIndex: 1, borderRight: "1px solid #ece8e2" }}>{h}</td>
+                                  {DAYS.map(d => {
+                                    const g = gapData[d][h].gap;
+                                    return (
+                                      <React.Fragment key={d}>
+                                        <td style={{ padding: "5px 8px", textAlign: "center", borderLeft: "1px solid #ece8e2", color: gapData[d][h].required > 0 ? "#e8590c" : "#d0cbc4", fontWeight: 500 }}>
+                                          {gapData[d][h].required > 0 ? gapData[d][h].required : "—"}
                                         </td>
-                                      );
-                                    })}
-                                    <td style={{ background: gapColor(totalGapRow), padding: "3px 6px", textAlign: "center", fontSize: 11.5, fontWeight: 700, color: gapTextColor(totalGapRow) }}>
+                                        <td style={{ padding: "5px 8px", textAlign: "center", color: gapData[d][h].current > 0 ? "#1971c2" : "#d0cbc4", fontWeight: 500 }}>
+                                          {gapData[d][h].current > 0 ? gapData[d][h].current : "—"}
+                                        </td>
+                                        <td style={{ padding: "5px 8px", textAlign: "center", background: gapColor(g), fontWeight: 700, color: gapTextColor(g), fontSize: 12 }}>
+                                          {g !== null ? (g === 0 ? "=" : (g > 0 ? "+" : "") + g) : "—"}
+                                        </td>
+                                      </React.Fragment>
+                                    );
+                                  })}
+                                  <React.Fragment>
+                                    <td style={{ padding: "5px 8px", textAlign: "center", borderLeft: "1px solid #e5e2dd", color: totalReq > 0 ? "#e8590c" : "#d0cbc4", fontWeight: 600 }}>{totalReq > 0 ? totalReq : "—"}</td>
+                                    <td style={{ padding: "5px 8px", textAlign: "center", color: totalCur > 0 ? "#1971c2" : "#d0cbc4", fontWeight: 600 }}>{totalCur > 0 ? totalCur : "—"}</td>
+                                    <td style={{ padding: "5px 8px", textAlign: "center", background: gapColor(totalGapRow), fontWeight: 700, color: gapTextColor(totalGapRow) }}>
                                       {totalReq > 0 || totalCur > 0 ? (totalGapRow === 0 ? "=" : (totalGapRow > 0 ? "+" : "") + totalGapRow) : "—"}
                                     </td>
-                                  </tr>
-                                </React.Fragment>
+                                  </React.Fragment>
+                                </tr>
                               );
                             })}
-                            {/* Totals */}
-                            <tr className="tr-tot">
-                              <td className="hl" style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                                <div>Weekly</div><div style={{ color: "#e8590c" }}>Required</div>
-                              </td>
-                              {DAYS.map(d => (
-                                <td key={d} style={{ padding: "6px 8px", textAlign: "center", color: "#e8590c", fontWeight: 700 }}>
-                                  {gapData[d]._reqTotal > 0 ? gapData[d]._reqTotal : "—"}
-                                </td>
-                              ))}
-                              <td style={{ padding: "6px 8px", textAlign: "center", color: "#e8590c", fontWeight: 700 }}>{totalRequired}</td>
-                            </tr>
-                            <tr className="tr-tot">
-                              <td className="hl" style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                                <div style={{ color: "#1971c2" }}>Current</div>
-                              </td>
-                              {DAYS.map(d => (
-                                <td key={d} style={{ padding: "6px 8px", textAlign: "center", color: "#1971c2", fontWeight: 700 }}>
-                                  {gapData[d]._curTotal > 0 ? gapData[d]._curTotal : "—"}
-                                </td>
-                              ))}
-                              <td style={{ padding: "6px 8px", textAlign: "center", color: "#1971c2", fontWeight: 700 }}>{totalCurrent}</td>
-                            </tr>
-                            <tr className="tr-tot">
-                              <td className="hl" style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                                <div style={{ color: gapTextColor(totalGap) }}>Gap</div>
-                              </td>
+                            <tr style={{ background: "#f5f3f0", borderTop: "1.5px solid #e5e2dd" }}>
+                              <td style={{ padding: "7px 14px", fontWeight: 700, fontSize: 10.5, color: "#5a524c", textTransform: "uppercase", letterSpacing: "0.04em", position: "sticky", left: 0, background: "#ece8e2", zIndex: 1 }}>Total</td>
                               {DAYS.map(d => {
                                 const g = gapData[d]._gapTotal;
                                 return (
-                                  <td key={d} style={{ padding: "6px 8px", textAlign: "center", fontWeight: 700, color: gapTextColor(g), background: gapColor(g) }}>
-                                    {gapData[d]._reqTotal > 0 || gapData[d]._curTotal > 0 ? (g === 0 ? "=" : (g > 0 ? "+" : "") + g) : "—"}
-                                  </td>
+                                  <React.Fragment key={d}>
+                                    <td style={{ padding: "7px 8px", textAlign: "center", fontWeight: 700, color: "#e8590c", borderLeft: "1px solid #e5e2dd" }}>{gapData[d]._reqTotal || "—"}</td>
+                                    <td style={{ padding: "7px 8px", textAlign: "center", fontWeight: 700, color: "#1971c2" }}>{gapData[d]._curTotal || "—"}</td>
+                                    <td style={{ padding: "7px 8px", textAlign: "center", fontWeight: 700, color: gapTextColor(g), background: gapColor(g) }}>
+                                      {gapData[d]._reqTotal > 0 || gapData[d]._curTotal > 0 ? (g === 0 ? "=" : (g > 0 ? "+" : "") + g) : "—"}
+                                    </td>
+                                  </React.Fragment>
                                 );
                               })}
-                              <td style={{ padding: "6px 8px", textAlign: "center", fontWeight: 700, color: gapTextColor(totalGap), background: gapColor(totalGap) }}>
-                                {totalGap === 0 ? "=" : (totalGap > 0 ? "+" : "") + totalGap}
-                              </td>
+                              <React.Fragment>
+                                <td style={{ padding: "7px 8px", textAlign: "center", fontWeight: 700, color: "#e8590c", borderLeft: "1px solid #e5e2dd" }}>{totalRequired || "—"}</td>
+                                <td style={{ padding: "7px 8px", textAlign: "center", fontWeight: 700, color: "#1971c2" }}>{totalCurrent || "—"}</td>
+                                <td style={{ padding: "7px 8px", textAlign: "center", fontWeight: 700, color: gapTextColor(totalGap), background: gapColor(totalGap) }}>
+                                  {totalGap === 0 ? "=" : (totalGap > 0 ? "+" : "") + totalGap}
+                                </td>
+                              </React.Fragment>
                             </tr>
                           </tbody>
                         </table>

@@ -97,6 +97,7 @@
       const [selectedTeam, setSelectedTeam] = useState(null);
       const [uploadError, setUploadError] = useState("");
       const fileRef = useRef();
+      const [shiftRules, setShiftRules] = useState({ minHours: "", maxHours: "" });
 
       const agentProdMinutes = 60 * (1 - params.shrinkage / 100) - params.adminTime;
 
@@ -295,7 +296,7 @@
 
           {/* Tabs */}
           <div style={{ background: "#fff", borderBottom: "1px solid #e5e2dd", padding: "0 28px", display: "flex", gap: 2 }}>
-            {[["input","① Volume Input"],["summary","② Summary"]].map(([id, label]) => (
+            {[["input","Headcount Planner"],["shifts","Shift Patterns"]].map(([id, label]) => (
               <button key={id} className={`tab ${activeTab === id ? "on" : ""}`} onClick={() => setActiveTab(id)}>{label}</button>
             ))}
           </div>
@@ -458,81 +459,9 @@
                     <span>low → high &nbsp;|&nbsp; Switch to "Call volumes" view to edit values directly in the grid</span>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* ═══ SUMMARY TAB ═══ */}
-            {activeTab === "summary" && (
-              <div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(195px, 1fr))", gap: 14, marginBottom: 22 }}>
-                  {weekSummary.map(({ day, totalCalls, peakAgents }) => {
-                    const maxCalls = Math.max(1, ...weekSummary.map(d => d.totalCalls));
-                    return (
-                      <div key={day} style={{ ...card, padding: 16 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                          <div style={{ fontSize: 18, fontWeight: 700 }}>{day}</div>
-                          <div style={{ textAlign: "right" }}>
-                            <div style={{ fontSize: 10, color: "#a09488", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>Peak</div>
-                            <div style={{ fontSize: 24, fontWeight: 700, color: "#e8590c", lineHeight: 1 }}>{peakAgents > 0 ? peakAgents : "—"}</div>
-                          </div>
-                        </div>
-                        <div style={{ fontSize: 12, color: "#8a8178", marginBottom: 10 }}>Calls: <span style={{ color: "#1a1a1a", fontWeight: 600 }}>{totalCalls.toLocaleString()}</span></div>
-                        {teams.map((t, i) => (
-                          <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 11.5 }}>
-                            <span style={{ display: "flex", alignItems: "center", gap: 5, color: "#8a8178" }}>
-                              <span style={{ width: 7, height: 7, borderRadius: "50%", background: TEAM_COLORS[i % TEAM_COLORS.length], display: "inline-block" }} />
-                              {t.name}
-                            </span>
-                            <span style={{ fontWeight: 600, color: TEAM_COLORS[i % TEAM_COLORS.length] }}>{Math.round(totalCalls * (t.pct / 100)).toLocaleString()}</span>
-                          </div>
-                        ))}
-                        <div style={{ marginTop: 12, height: 3, background: "#f0ede8", borderRadius: 2 }}>
-                          <div style={{ height: "100%", width: `${(totalCalls / maxCalls) * 100}%`, background: "#e8590c", borderRadius: 2 }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div style={{ ...card, overflow: "hidden", marginBottom: 18 }}>
-                  <div style={{ padding: "13px 18px 9px", borderBottom: "1px solid #e5e2dd" }}>
-                    <div className="lxs" style={{ marginBottom: 0 }}>Weekly Summary</div>
-                  </div>
-                  <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ background: "#f5f3f0" }}>
-                        <th style={{ padding: "9px 18px", textAlign: "left", fontSize: 10.5, fontWeight: 700, color: "#a09488", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1.5px solid #e5e2dd" }}>Day</th>
-                        <th style={{ padding: "9px 14px", textAlign: "right", fontSize: 10.5, fontWeight: 700, color: "#a09488", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1.5px solid #e5e2dd" }}>Total Calls</th>
-                        <th style={{ padding: "9px 14px", textAlign: "right", fontSize: 10.5, fontWeight: 700, color: "#e8590c", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1.5px solid #e5e2dd" }}>Peak Agents</th>
-                        {teams.map((t, i) => (
-                          <th key={i} style={{ padding: "9px 14px", textAlign: "right", fontSize: 10.5, fontWeight: 700, color: TEAM_COLORS[i % TEAM_COLORS.length], letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1.5px solid #e5e2dd" }}>{t.name}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {weekSummary.map(({ day, totalCalls, peakAgents }, ri) => (
-                        <tr key={day} style={{ background: ri % 2 === 0 ? "#fff" : "#fdfcfb" }}>
-                          <td style={{ padding: "9px 18px", fontWeight: 700 }}>{day}</td>
-                          <td style={{ padding: "9px 14px", textAlign: "right", color: "#5a524c" }}>{totalCalls.toLocaleString()}</td>
-                          <td style={{ padding: "9px 14px", textAlign: "right", fontWeight: 700, color: "#e8590c" }}>{peakAgents > 0 ? peakAgents : "—"}</td>
-                          {teams.map((t, i) => (
-                            <td key={i} style={{ padding: "9px 14px", textAlign: "right", color: TEAM_COLORS[i % TEAM_COLORS.length], fontWeight: 500 }}>{Math.round(totalCalls * (t.pct / 100)).toLocaleString()}</td>
-                          ))}
-                        </tr>
-                      ))}
-                      <tr style={{ background: "#f5f3f0", borderTop: "1.5px solid #e5e2dd" }}>
-                        <td style={{ padding: "9px 18px", fontWeight: 700, fontSize: 10.5, color: "#5a524c", textTransform: "uppercase", letterSpacing: "0.04em" }}>Week Total</td>
-                        <td style={{ padding: "9px 14px", textAlign: "right", fontWeight: 700 }}>{grandTotal.toLocaleString()}</td>
-                        <td style={{ padding: "9px 14px", textAlign: "right", fontWeight: 700, color: "#e8590c" }}>Max: {Math.max(0, ...weekSummary.map(d => d.peakAgents))}</td>
-                        {teams.map((t, i) => (
-                          <td key={i} style={{ padding: "9px 14px", textAlign: "right", fontWeight: 700, color: TEAM_COLORS[i % TEAM_COLORS.length] }}>{Math.round(grandTotal * (t.pct / 100)).toLocaleString()}</td>
-                        ))}
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                <div style={{ background: "#fff8f5", border: "1px solid #fbd5be", borderRadius: 8, padding: 15, fontSize: 12, color: "#8a8178", lineHeight: 1.9 }}>
+                {/* Calculation method */}
+                <div style={{ marginTop: 16, background: "#fff8f5", border: "1px solid #fbd5be", borderRadius: 8, padding: 15, fontSize: 12, color: "#8a8178", lineHeight: 1.9 }}>
                   <div className="lxs" style={{ marginBottom: 5 }}>Calculation Method</div>
                   <b style={{ color: "#5a524c" }}>Productive mins/agent/hr</b> = 60 × (1 − shrinkage%) − admin time<br />
                   <b style={{ color: "#5a524c" }}>Agents required</b> = (Calls × AHT) ÷ Productive mins/agent/hr<br />
@@ -540,9 +469,193 @@
                 </div>
               </div>
             )}
+
+            {/* ═══ SHIFTS TAB ═══ */}
+            {activeTab === "shifts" && (
+              <div>
+                {/* Rules panel */}
+                <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 22 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    <div style={{ background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10, padding: 18 }}>
+                      <div className="lxs">Shift Rules <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#b0a89e", fontSize: 10 }}>(all optional)</span></div>
+                      {[
+                        { key: "minHours", label: "Minimum shift duration (hrs)", placeholder: "e.g. 4" },
+                        { key: "maxHours", label: "Maximum shift duration (hrs)", placeholder: "e.g. 8" },
+                      ].map(({ key, label, placeholder }) => (
+                        <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                          <label style={{ fontSize: 12.5, color: "#5a524c" }}>{label}</label>
+                          <input type="number" min={1} max={24} className="pi"
+                            value={shiftRules[key]}
+                            placeholder={placeholder}
+                            onChange={e => setShiftRules(r => ({ ...r, [key]: e.target.value }))} />
+                        </div>
+                      ))}
+                      <div style={{ marginTop: 10, fontSize: 11, color: "#a09488", lineHeight: 1.7 }}>
+                        Defaults: min 4 hrs, max 12 hrs if left blank.<br />
+                        Team filter from the Volume tab applies here too.
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Suggested shifts per day */}
+                  <div>
+                    {(() => {
+                      const shifts = generateShifts(results, teams, shiftRules, selectedTeam);
+                      const teamLabel = selectedTeam !== null ? teams[selectedTeam].name : "All Teams";
+                      return (
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 14 }}>
+                            <div>
+                              <div className="lxs" style={{ marginBottom: 3 }}>Suggested Shift Patterns</div>
+                              <div style={{ fontSize: 11.5, color: "#a09488" }}>Based on agent demand · Team: <b style={{ color: "#1a1a1a" }}>{teamLabel}</b></div>
+                            </div>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <span style={{ fontSize: 12, color: "#8a8178", fontWeight: 500, alignSelf: "center" }}>Team:</span>
+                              <button className={`tgb ${selectedTeam === null ? "on" : ""}`} onClick={() => setSelectedTeam(null)}>All</button>
+                              {teams.map((t, i) => (
+                                <button key={i} className={`tgb ${selectedTeam === i ? "on" : ""}`}
+                                  style={selectedTeam === i ? { background: TEAM_COLORS[i % TEAM_COLORS.length], borderColor: TEAM_COLORS[i % TEAM_COLORS.length] } : {}}
+                                  onClick={() => setSelectedTeam(selectedTeam === i ? null : i)}>{t.name}</button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
+                            {DAYS.map(day => {
+                              const dayShifts = shifts[day];
+                              const totalAgentHours = dayShifts.reduce((s, sh) => s + sh.agents * sh.duration, 0);
+                              return (
+                                <div key={day} style={{ background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10, overflow: "hidden" }}>
+                                  <div style={{ padding: "12px 16px 10px", borderBottom: "1px solid #f0ede8", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                    <div style={{ fontSize: 16, fontWeight: 700 }}>{day}</div>
+                                    <div style={{ fontSize: 11, color: "#a09488" }}>
+                                      {dayShifts.length} shift{dayShifts.length !== 1 ? "s" : ""} &nbsp;·&nbsp; {totalAgentHours} agent-hrs
+                                    </div>
+                                  </div>
+                                  {dayShifts.length === 0
+                                    ? <div style={{ padding: "16px", fontSize: 12, color: "#c0b8b0", textAlign: "center" }}>No demand</div>
+                                    : (
+                                      <div style={{ padding: "10px 14px" }}>
+                                        {/* Mini timeline bar */}
+                                        <div style={{ position: "relative", height: 10, background: "#f5f3f0", borderRadius: 5, marginBottom: 12, overflow: "hidden" }}>
+                                          {dayShifts.map((sh, si) => (
+                                            <div key={si} style={{
+                                              position: "absolute", top: 0, height: "100%",
+                                              left: `${(sh.start / 24) * 100}%`,
+                                              width: `${(sh.duration / 24) * 100}%`,
+                                              background: `rgba(232,89,12,${0.35 + (si % 3) * 0.2})`,
+                                              borderRadius: 3,
+                                            }} />
+                                          ))}
+                                        </div>
+                                        {/* Shift list */}
+                                        {dayShifts.map((sh, si) => (
+                                          <div key={si} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", borderBottom: si < dayShifts.length - 1 ? "1px solid #f5f3f0" : "none" }}>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                              <div style={{ width: 10, height: 10, borderRadius: 2, background: `rgba(232,89,12,${0.35 + (si % 3) * 0.2})`, flexShrink: 0 }} />
+                                              <span style={{ fontSize: 12.5, fontWeight: 600, color: "#1a1a1a" }}>{sh.startLabel} – {sh.endLabel}</span>
+                                              <span style={{ fontSize: 11, color: "#a09488" }}>{sh.duration}hr</span>
+                                            </div>
+                                            <div style={{ textAlign: "right" }}>
+                                              <span style={{ fontSize: 13, fontWeight: 700, color: "#e8590c" }}>{sh.agents}</span>
+                                              <span style={{ fontSize: 11, color: "#a09488", marginLeft: 3 }}>agents</span>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )
+                                  }
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       );
+    }
+
+
+    // ── Shift pattern suggestion engine ──────────────────────────────────
+    function generateShifts(results, teams, shiftRules, selectedTeam) {
+      const minH = shiftRules.minHours !== "" ? parseInt(shiftRules.minHours) : 4;
+      const maxH = shiftRules.maxHours !== "" ? parseInt(shiftRules.maxHours) : 12;
+
+      // Build hourly demand array (0-23) per day
+      const shifts = {};
+      DAYS.forEach(day => {
+        const demand = HOURS.map((h, hi) => {
+          const v = selectedTeam === null
+            ? results[day][h].agents
+            : (results[day][h].teamSplit[selectedTeam]?.agents || 0);
+          return { hour: hi, agents: Math.ceil(v) };
+        });
+
+        // Greedy shift builder: scan demand, create shifts where agents needed
+        const dayShifts = [];
+        const covered = new Array(24).fill(0);
+
+        // Identify "demand blocks" — contiguous hours with >0 agents needed
+        let i = 0;
+        while (i < 24) {
+          if (demand[i].agents === 0) { i++; continue; }
+          // Find how long demand persists
+          let j = i;
+          while (j < 24 && demand[j].agents > 0) j++;
+          const blockLen = j - i;
+
+          // Split block into shifts respecting min/max
+          let cursor = i;
+          while (cursor < j) {
+            const remaining = j - cursor;
+            // Choose shift length: prefer maxH, but don't go below minH
+            let shiftLen = Math.min(maxH, remaining);
+            if (shiftLen < minH && remaining < minH) shiftLen = remaining; // allow short tail
+            else if (shiftLen < minH) shiftLen = minH;
+
+            const startH = cursor;
+            const endH = Math.min(cursor + shiftLen, 24);
+
+            // Peak agents needed in this window
+            const peakAgents = Math.max(...demand.slice(startH, endH).map(d => d.agents));
+            if (peakAgents > 0) {
+              dayShifts.push({
+                start: startH,
+                end: endH,
+                duration: endH - startH,
+                agents: peakAgents,
+                startLabel: HOURS[startH],
+                endLabel: endH < 24 ? HOURS[endH] : "12am+",
+              });
+            }
+            cursor += shiftLen;
+          }
+          i = j;
+        }
+
+        // Merge adjacent same-agent shifts if within max duration
+        const merged = [];
+        dayShifts.forEach(s => {
+          const last = merged[merged.length - 1];
+          if (last && last.end === s.start && last.agents === s.agents && (s.end - last.start) <= maxH) {
+            last.end = s.end;
+            last.duration = last.end - last.start;
+            last.endLabel = s.endLabel;
+          } else {
+            merged.push({ ...s });
+          }
+        });
+
+        shifts[day] = merged;
+      });
+      return shifts;
     }
 
     ReactDOM.createRoot(document.getElementById("root")).render(<App />);

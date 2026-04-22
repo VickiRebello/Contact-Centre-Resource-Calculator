@@ -98,7 +98,12 @@
       const [uploadError, setUploadError] = useState("");
       const fileRef = useRef();
       const [shiftRules, setShiftRules] = useState({ minHours: "", maxHours: "" });
-      const [activeWindowFilter, setActiveWindowFilter] = useState(null); // null = show all
+      const [activeWindowFilter, setActiveWindowFilter] = useState(null);
+      const [currentResourcing, setCurrentResourcing] = useState((() => {
+        const v = {}; DAYS.forEach(d => { v[d] = {}; HOURS.forEach(h => { v[d][h] = ""; }); }); return v;
+      })());
+      const [resourcingUploadError, setResourcingUploadError] = useState("");
+      const resourcingFileRef = useRef();
       const [teamWindows, setTeamWindows] = useState([
         { id: 1, name: "Day Reception",            color: "#1971c2", days: [0,1,2,3,4], startHour: 9,  endHour: 17, teamIdx: null },
         { id: 2, name: "Out of Hours (Mon–Thu)",  color: "#e8590c", days: [0,1,2,3],   startHour: 17, endHour: 25, teamIdx: null },
@@ -270,6 +275,54 @@
         URL.revokeObjectURL(url);
       }
 
+      function handleResourcingUpload(e) {
+        setResourcingUploadError("");
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          try {
+            const text = ev.target.result;
+            const rows = text.trim().split(/\r?\n/).map(r => r.split(/,/).map(c => c.trim()));
+            const headerRow = rows[0].map(c => c.toLowerCase());
+            const newVols = {};
+            DAYS.forEach(d => { newVols[d] = {}; HOURS.forEach(h => { newVols[d][h] = ""; }); });
+            let parsed = 0;
+            const firstDataCell = rows[1]?.[0]?.toLowerCase();
+            const isHoursAsRows = HOURS.some(h => h === firstDataCell);
+            if (isHoursAsRows) {
+              const dayHeaders = headerRow.slice(1).map(c => DAYS.find(d => d.toLowerCase() === c.slice(0,3)));
+              for (let r = 1; r < rows.length; r++) {
+                const hourKey = HOURS.find(h => h === rows[r][0]?.toLowerCase());
+                if (!hourKey) continue;
+                for (let c = 1; c < rows[r].length; c++) {
+                  const dayKey = dayHeaders[c-1];
+                  if (!dayKey) continue;
+                  const val = rows[r][c];
+                  if (val !== "" && !isNaN(val)) { newVols[dayKey][hourKey] = val; parsed++; }
+                }
+              }
+            } else {
+              for (let r = 1; r < rows.length; r++) {
+                const dayKey = DAYS.find(d => d.toLowerCase() === rows[r][0]?.toLowerCase()?.slice(0,3));
+                if (!dayKey) continue;
+                for (let c = 1; c < rows[r].length; c++) {
+                  const hourKey = HOURS.find(h => h === headerRow[c]);
+                  if (!hourKey) continue;
+                  const val = rows[r][c];
+                  if (val !== "" && !isNaN(val)) { newVols[dayKey][hourKey] = val; parsed++; }
+                }
+              }
+            }
+            if (parsed === 0) { setResourcingUploadError("Could not parse file."); return; }
+            setCurrentResourcing(newVols);
+            setResourcingUploadError("");
+          } catch { setResourcingUploadError("Failed to read file."); }
+        };
+        reader.readAsText(file);
+        e.target.value = "";
+      }
+
             const weekSummary = DAYS.map(d => ({ day: d, totalCalls: results[d]._dayTotal, peakAgents: results[d]._peakAgents }));
       const grandTotal = weekSummary.reduce((s, d) => s + d.totalCalls, 0);
 
@@ -306,7 +359,7 @@
 
           {/* Tabs */}
           <div style={{ background: "#fff", borderBottom: "1px solid #e5e2dd", padding: "0 28px", display: "flex", gap: 2 }}>
-            {[["input","Headcount Planner"],["shifts","Suggested Shift Patterns"]].map(([id, label]) => (
+            {[["input","Headcount Planner"],["gap","Gap Analysis"],["shifts","Suggested Shift Patterns"]].map(([id, label]) => (
               <button key={id} className={`tab ${activeTab === id ? "on" : ""}`} onClick={() => setActiveTab(id)}>{label}</button>
             ))}
           </div>
@@ -402,7 +455,7 @@
 
                   {/* Heat-map grid with editable volume inputs */}
                   <div style={{ ...card, overflow: "hidden" }}>
-                    <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "70vh" }}>
+                    <div style={{ overflowX: "auto" }}>
                       <table className="wt">
                         <thead>
                           <tr>
@@ -479,6 +532,235 @@
                 </div>
               </div>
             )}
+
+            {/* ═══ GAP ANALYSIS TAB ═══ */}
+            {activeTab === "gap" && (() => {
+              // Build gap data: current - required (positive = excess, negative = short)
+              const gapData = {};
+              DAYS.forEach(d => {
+                gapData[d] = {};
+                HOURS.forEach(h => {
+                  const required = Math.ceil(selectedTeam === null ? results[d][h].agents : (results[d][h].teamSplit[selectedTeam]?.agents || 0));
+                  const current = parseFloat(currentResourcing[d][h]) || 0;
+                  const hasRequired = required > 0;
+                  const hasCurrent = current > 0;
+                  gapData[d][h] = { required, current, gap: hasCurrent || hasRequired ? current - required : null };
+                });
+                gapData[d]._reqTotal = HOURS.reduce((s,h) => s + gapData[d][h].required, 0);
+                gapData[d]._curTotal = HOURS.reduce((s,h) => s + (parseFloat(currentResourcing[d][h])||0), 0);
+                gapData[d]._gapTotal = gapData[d]._curTotal - gapData[d]._reqTotal;
+              });
+
+              const gapColor = (gap) => {
+                if (gap === null) return "transparent";
+                if (gap > 0) return `rgba(47,158,68,${Math.min(0.6, 0.15 + gap * 0.08)})`;
+                if (gap < 0) return `rgba(201,42,42,${Math.min(0.6, 0.15 + Math.abs(gap) * 0.08)})`;
+                return "rgba(200,200,200,0.15)";
+              };
+              const gapTextColor = (gap) => {
+                if (gap === null) return "#d0cbc4";
+                if (gap > 0) return "#2f9e44";
+                if (gap < 0) return "#c92a2a";
+                return "#8a8178";
+              };
+
+              const hasAnyResourcing = DAYS.some(d => HOURS.some(h => currentResourcing[d][h] !== ""));
+              const totalRequired = DAYS.reduce((s,d) => s + gapData[d]._reqTotal, 0);
+              const totalCurrent = DAYS.reduce((s,d) => s + gapData[d]._curTotal, 0);
+              const totalGap = totalCurrent - totalRequired;
+
+              return (
+                <div>
+                  {/* Header controls */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+                    <div>
+                      <div className="lxs" style={{ marginBottom: 4 }}>Gap Analysis — Required vs Current Resourcing</div>
+                      <div style={{ fontSize: 11.5, color: "#a09488" }}>Upload your current staffing levels, then see where you are over or under resourced by hour and day.</div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      {resourcingUploadError && <span style={{ fontSize: 11, color: "#e03131" }}>{resourcingUploadError}</span>}
+                      <button className="upb" onClick={() => resourcingFileRef.current.click()}>⬆ Upload Current Resourcing CSV</button>
+                      <input ref={resourcingFileRef} type="file" accept=".csv,.tsv,.txt" style={{ display: "none" }} onChange={handleResourcingUpload} />
+                      {hasAnyResourcing && (
+                        <button className="upb" style={{ color: "#c92a2a", borderColor: "#f5c6c6" }}
+                          onClick={() => { const v={}; DAYS.forEach(d=>{v[d]={};HOURS.forEach(h=>{v[d][h]="";})}); setCurrentResourcing(v); }}>
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Team filter */}
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12, color: "#8a8178", fontWeight: 500 }}>Required based on:</span>
+                    <button className={`tgb ${selectedTeam === null ? "on" : ""}`} onClick={() => setSelectedTeam(null)}>All teams</button>
+                    {teams.map((t, i) => (
+                      <button key={i} className={`tgb ${selectedTeam === i ? "on" : ""}`}
+                        style={selectedTeam === i ? { background: TEAM_COLORS[i % TEAM_COLORS.length], borderColor: TEAM_COLORS[i % TEAM_COLORS.length] } : {}}
+                        onClick={() => setSelectedTeam(selectedTeam === i ? null : i)}>{t.name}</button>
+                    ))}
+                  </div>
+
+                  {/* Summary chips */}
+                  {hasAnyResourcing && (
+                    <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+                      {[
+                        ["Total Required", totalRequired, "#e8590c"],
+                        ["Total Current", totalCurrent, "#1971c2"],
+                        ["Overall Gap", (totalGap >= 0 ? "+" : "") + totalGap, totalGap > 0 ? "#2f9e44" : totalGap < 0 ? "#c92a2a" : "#8a8178"],
+                      ].map(([l, v, c]) => (
+                        <div key={l} className="chip">
+                          <span style={{ color: "#a09488" }}>{l}: </span>
+                          <span style={{ fontWeight: 700, color: c }}>{v}</span>
+                        </div>
+                      ))}
+                      <div className="chip">
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ width: 10, height: 10, borderRadius: 2, background: "rgba(47,158,68,0.5)", display: "inline-block" }} />
+                          <span style={{ color: "#a09488" }}>Excess &nbsp;</span>
+                          <span style={{ width: 10, height: 10, borderRadius: 2, background: "rgba(201,42,42,0.5)", display: "inline-block" }} />
+                          <span style={{ color: "#a09488" }}>Short &nbsp;</span>
+                          <span style={{ width: 10, height: 10, borderRadius: 2, background: "rgba(200,200,200,0.3)", display: "inline-block" }} />
+                          <span style={{ color: "#a09488" }}>Balanced</span>
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Three-row table: Required / Current / Gap */}
+                  {!hasAnyResourcing ? (
+                    <div style={{ ...card, padding: 40, textAlign: "center" }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: "#5a524c", marginBottom: 8 }}>No current resourcing data uploaded</div>
+                      <div style={{ fontSize: 13, color: "#a09488", marginBottom: 16 }}>Upload a CSV with your current staffing levels (same format as call volumes — hours as rows, days as columns).</div>
+                      <button className="upb" onClick={() => resourcingFileRef.current.click()}>⬆ Upload Current Resourcing CSV</button>
+                    </div>
+                  ) : (
+                    <div style={{ ...card, overflow: "hidden" }}>
+                      <div style={{ overflowX: "auto" }}>
+                        <table className="wt">
+                          <thead>
+                            <tr>
+                              <th className="hc" style={{ minWidth: 100 }}>Hour</th>
+                              {DAYS.map(d => <th key={d} style={{ minWidth: 90 }}>{d}</th>)}
+                              <th style={{ minWidth: 70, color: "#e8590c" }}>Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {HOURS.map(h => {
+                              const rowRequired = DAYS.map(d => gapData[d][h].required);
+                              const rowCurrent = DAYS.map(d => gapData[d][h].current);
+                              const rowGaps = DAYS.map(d => gapData[d][h].gap);
+                              const anyData = rowGaps.some(g => g !== null);
+                              if (!anyData && rowRequired.every(r => r === 0)) return null;
+                              const totalReq = rowRequired.reduce((a,b)=>a+b,0);
+                              const totalCur = rowCurrent.reduce((a,b)=>a+b,0);
+                              const totalGapRow = totalCur - totalReq;
+                              return (
+                                <React.Fragment key={h}>
+                                  {/* Required row */}
+                                  <tr style={{ background: "#fafaf8" }}>
+                                    <td className="hl" style={{ fontSize: 10.5 }}>
+                                      <div style={{ fontWeight: 700, color: "#1a1a1a" }}>{h}</div>
+                                      <div style={{ fontSize: 10, color: "#e8590c", fontWeight: 600 }}>Required</div>
+                                    </td>
+                                    {DAYS.map(d => (
+                                      <td key={d} style={{ padding: "3px 6px" }}>
+                                        {gapData[d][h].required > 0
+                                          ? <div style={{ fontSize: 11.5, fontWeight: 600, color: "#e8590c", textAlign: "center" }}>{gapData[d][h].required}</div>
+                                          : <div className="ce">—</div>}
+                                      </td>
+                                    ))}
+                                    <td style={{ padding: "3px 6px", textAlign: "center", fontSize: 11.5, fontWeight: 600, color: "#e8590c" }}>
+                                      {totalReq > 0 ? totalReq : "—"}
+                                    </td>
+                                  </tr>
+                                  {/* Current row */}
+                                  <tr style={{ background: "#f5f8ff" }}>
+                                    <td className="hl" style={{ paddingTop: 2, paddingBottom: 2 }}>
+                                      <div style={{ fontSize: 10, color: "#1971c2", fontWeight: 600 }}>Current</div>
+                                    </td>
+                                    {DAYS.map(d => (
+                                      <td key={d} style={{ padding: "3px 6px" }}>
+                                        {gapData[d][h].current > 0
+                                          ? <div style={{ fontSize: 11.5, fontWeight: 600, color: "#1971c2", textAlign: "center" }}>{gapData[d][h].current}</div>
+                                          : <div className="ce">—</div>}
+                                      </td>
+                                    ))}
+                                    <td style={{ padding: "3px 6px", textAlign: "center", fontSize: 11.5, fontWeight: 600, color: "#1971c2" }}>
+                                      {totalCur > 0 ? totalCur : "—"}
+                                    </td>
+                                  </tr>
+                                  {/* Gap row */}
+                                  <tr style={{ borderBottom: "2px solid #ece8e2" }}>
+                                    <td className="hl" style={{ paddingTop: 2, paddingBottom: 6 }}>
+                                      <div style={{ fontSize: 10, color: "#8a8178", fontWeight: 600 }}>Gap</div>
+                                    </td>
+                                    {DAYS.map(d => {
+                                      const g = gapData[d][h].gap;
+                                      return (
+                                        <td key={d} style={{ background: gapColor(g), padding: "3px 6px" }}>
+                                          {g !== null
+                                            ? <div style={{ fontSize: 11.5, fontWeight: 700, color: gapTextColor(g), textAlign: "center" }}>
+                                                {g === 0 ? "=" : (g > 0 ? "+" : "") + g}
+                                              </div>
+                                            : <div className="ce">—</div>}
+                                        </td>
+                                      );
+                                    })}
+                                    <td style={{ background: gapColor(totalGapRow), padding: "3px 6px", textAlign: "center", fontSize: 11.5, fontWeight: 700, color: gapTextColor(totalGapRow) }}>
+                                      {totalReq > 0 || totalCur > 0 ? (totalGapRow === 0 ? "=" : (totalGapRow > 0 ? "+" : "") + totalGapRow) : "—"}
+                                    </td>
+                                  </tr>
+                                </React.Fragment>
+                              );
+                            })}
+                            {/* Totals */}
+                            <tr className="tr-tot">
+                              <td className="hl" style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                                <div>Weekly</div><div style={{ color: "#e8590c" }}>Required</div>
+                              </td>
+                              {DAYS.map(d => (
+                                <td key={d} style={{ padding: "6px 8px", textAlign: "center", color: "#e8590c", fontWeight: 700 }}>
+                                  {gapData[d]._reqTotal > 0 ? gapData[d]._reqTotal : "—"}
+                                </td>
+                              ))}
+                              <td style={{ padding: "6px 8px", textAlign: "center", color: "#e8590c", fontWeight: 700 }}>{totalRequired}</td>
+                            </tr>
+                            <tr className="tr-tot">
+                              <td className="hl" style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                                <div style={{ color: "#1971c2" }}>Current</div>
+                              </td>
+                              {DAYS.map(d => (
+                                <td key={d} style={{ padding: "6px 8px", textAlign: "center", color: "#1971c2", fontWeight: 700 }}>
+                                  {gapData[d]._curTotal > 0 ? gapData[d]._curTotal : "—"}
+                                </td>
+                              ))}
+                              <td style={{ padding: "6px 8px", textAlign: "center", color: "#1971c2", fontWeight: 700 }}>{totalCurrent}</td>
+                            </tr>
+                            <tr className="tr-tot">
+                              <td className="hl" style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                                <div style={{ color: gapTextColor(totalGap) }}>Gap</div>
+                              </td>
+                              {DAYS.map(d => {
+                                const g = gapData[d]._gapTotal;
+                                return (
+                                  <td key={d} style={{ padding: "6px 8px", textAlign: "center", fontWeight: 700, color: gapTextColor(g), background: gapColor(g) }}>
+                                    {gapData[d]._reqTotal > 0 || gapData[d]._curTotal > 0 ? (g === 0 ? "=" : (g > 0 ? "+" : "") + g) : "—"}
+                                  </td>
+                                );
+                              })}
+                              <td style={{ padding: "6px 8px", textAlign: "center", fontWeight: 700, color: gapTextColor(totalGap), background: gapColor(totalGap) }}>
+                                {totalGap === 0 ? "=" : (totalGap > 0 ? "+" : "") + totalGap}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* ═══ SHIFTS TAB ═══ */}
             {activeTab === "shifts" && (() => {

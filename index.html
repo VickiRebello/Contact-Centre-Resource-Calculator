@@ -305,7 +305,7 @@
 
           {/* Tabs */}
           <div style={{ background: "#fff", borderBottom: "1px solid #e5e2dd", padding: "0 28px", display: "flex", gap: 2 }}>
-            {[["input","Headcount Planner"],["shifts","Shift Patterns"]].map(([id, label]) => (
+            {[["input","Headcount Planner"],["shifts","Suggested Shift Patterns"]].map(([id, label]) => (
               <button key={id} className={`tab ${activeTab === id ? "on" : ""}`} onClick={() => setActiveTab(id)}>{label}</button>
             ))}
           </div>
@@ -588,75 +588,80 @@
 
               return (
                 <div>
-                  <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 22 }}>
-
-                    {/* ── LEFT PANEL ── */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-
-                      {/* Shift rules */}
-                      <div style={{ background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10, padding: 16 }}>
-                        <div className="lxs">Shift Rules <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#b0a89e", fontSize: 10 }}>(optional)</span></div>
-                        {[
-                          { key: "minHours", label: "Min shift duration (hrs)", ph: "e.g. 4" },
-                          { key: "maxHours", label: "Max shift duration (hrs)", ph: "e.g. 8" },
-                        ].map(({ key, label, ph }) => (
-                          <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9 }}>
-                            <label style={{ fontSize: 12, color: "#5a524c" }}>{label}</label>
-                            <input type="number" min={1} max={24} className="pi" style={{ width: 70 }}
-                              value={shiftRules[key]} placeholder={ph}
-                              onChange={e => setShiftRules(r => ({ ...r, [key]: e.target.value }))} />
-                          </div>
-                        ))}
-                        <div style={{ fontSize: 11, color: "#a09488" }}>Defaults: 4hr min, 12hr max</div>
-                      </div>
-
-                      {/* Team windows */}
-                      <div style={{ background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10, padding: 16 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                          <div className="lxs" style={{ marginBottom: 0 }}>Team Windows</div>
-                          <button className="atb" onClick={() => setTeamWindows(tw => [...tw, {
-                            id: Date.now(), name: "New Window", color: "#888",
-                            days: [0,1,2,3,4], startHour: 9, endHour: 17, teamIdx: null
-                          }])}>+ Add</button>
+                  {/* Shift rules — full width at top */}
+                  <div style={{ background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10, padding: 16, marginBottom: 20, display: "flex", gap: 32, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <div style={{ flex: "0 0 auto" }}>
+                      <div className="lxs">Shift Rules <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#b0a89e", fontSize: 10 }}>(optional)</span></div>
+                      {[
+                        { key: "minHours", label: "Min shift duration (hrs)", ph: "e.g. 4" },
+                        { key: "maxHours", label: "Max shift duration (hrs)", ph: "e.g. 8" },
+                      ].map(({ key, label, ph }) => (
+                        <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9, gap: 16 }}>
+                          <label style={{ fontSize: 12, color: "#5a524c" }}>{label}</label>
+                          <input type="number" min={1} max={24} className="pi" style={{ width: 70 }}
+                            value={shiftRules[key]} placeholder={ph}
+                            onChange={e => setShiftRules(r => ({ ...r, [key]: e.target.value }))} />
                         </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                          {teamWindows.map((tw, wi) => (
-                            <div key={tw.id} style={{ background: "#faf9f7", border: "1px solid #ece8e2", borderRadius: 8, padding: 12 }}>
+                      ))}
+                      <div style={{ fontSize: 11, color: "#a09488" }}>Defaults: 4hr min, 12hr max</div>
+                    </div>
+                  </div>
+
+                  {/* Team windows + results — one row per window */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <div className="lxs" style={{ marginBottom: 0 }}>Team Windows &amp; Suggested Shifts</div>
+                      <button className="atb" onClick={() => setTeamWindows(tw => [...tw, {
+                        id: Date.now(), name: "New Window", color: "#888",
+                        days: [0,1,2,3,4], startHour: 9, endHour: 17, teamIdx: null
+                      }])}>+ Add window</button>
+                    </div>
+                    {teamWindows.length === 0 && (
+                      <div style={{ padding: 32, textAlign: "center", color: "#a09488", fontSize: 13, background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10 }}>
+                        Add a team window to see shift suggestions
+                      </div>
+                    )}
+                    {teamWindows.map((tw, wi) => {
+                      const { coversDays, dayResults } = getWindowResults(tw);
+                      return (
+                        <div key={tw.id} style={{ background: "#fff", border: `1.5px solid ${tw.color}22`, borderLeft: `4px solid ${tw.color}`, borderRadius: 10, overflow: "hidden" }}>
+                          {/* Row header: window config */}
+                          <div style={{ display: "flex", gap: 0, alignItems: "stretch" }}>
+                            {/* Config panel */}
+                            <div style={{ width: 300, flexShrink: 0, padding: 14, borderRight: "1px solid #f0ede8", background: "#faf9f7" }}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                                <input className="ti" style={{ flex: 1, marginRight: 8, fontWeight: 600 }}
+                                <input className="ti" style={{ flex: 1, marginRight: 8, fontWeight: 600, fontSize: 12 }}
                                   value={tw.name}
                                   onChange={e => setTeamWindows(tws => tws.map((t, i) => i === wi ? {...t, name: e.target.value} : t))} />
-                                <input type="color" value={tw.color} style={{ width: 28, height: 28, border: "none", background: "none", cursor: "pointer", padding: 0 }}
+                                <input type="color" value={tw.color} style={{ width: 24, height: 24, border: "none", background: "none", cursor: "pointer", padding: 0 }}
                                   onChange={e => setTeamWindows(tws => tws.map((t, i) => i === wi ? {...t, color: e.target.value} : t))} />
                                 <button className="rm" style={{ marginLeft: 4 }}
                                   onClick={() => setTeamWindows(tws => tws.filter((_, i) => i !== wi))}>×</button>
                               </div>
-
-                              {/* Days checkboxes */}
-                              <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>
+                              {/* Days */}
+                              <div style={{ display: "flex", gap: 3, marginBottom: 8, flexWrap: "wrap" }}>
                                 {DAYS.map((d, di) => (
                                   <button key={d}
                                     onClick={() => setTeamWindows(tws => tws.map((t, i) => i === wi ? {
                                       ...t, days: t.days.includes(di) ? t.days.filter(x => x !== di) : [...t.days, di].sort()
                                     } : t))}
                                     style={{
-                                      padding: "2px 7px", borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                                      padding: "2px 6px", borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: "pointer",
                                       background: tw.days.includes(di) ? tw.color : "#fff",
                                       color: tw.days.includes(di) ? "#fff" : "#8a8178",
                                       border: `1.5px solid ${tw.days.includes(di) ? tw.color : "#ddd9d3"}`,
                                     }}>{d}</button>
                                 ))}
                               </div>
-
                               {/* Hours */}
-                              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-                                <span style={{ fontSize: 11, color: "#a09488", width: 32 }}>From</span>
+                              <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
+                                <span style={{ fontSize: 11, color: "#a09488", width: 28, flexShrink: 0 }}>From</span>
                                 <select className="ti" style={{ flex: 1, fontSize: 11 }}
                                   value={tw.startHour}
                                   onChange={e => setTeamWindows(tws => tws.map((t, i) => i === wi ? {...t, startHour: parseInt(e.target.value)} : t))}>
                                   {Array.from({length: 24}, (_, hi) => <option key={hi} value={hi}>{HOURS[hi]}</option>)}
                                 </select>
-                                <span style={{ fontSize: 11, color: "#a09488", width: 16, textAlign: "center" }}>to</span>
+                                <span style={{ fontSize: 11, color: "#a09488", width: 12, textAlign: "center" }}>to</span>
                                 <select className="ti" style={{ flex: 1, fontSize: 11 }}
                                   value={tw.endHour}
                                   onChange={e => setTeamWindows(tws => tws.map((t, i) => i === wi ? {...t, endHour: parseInt(e.target.value)} : t))}>
@@ -665,69 +670,55 @@
                                   <option value={26}>2am (next)</option>
                                   <option value={27}>3am (next)</option>
                                   <option value={28}>4am (next)</option>
+                                  <option value={29}>5am (next)</option>
                                   <option value={30}>6am (next)</option>
+                                  <option value={31}>7am (next)</option>
+                                  <option value={32}>8am (next)</option>
                                   <option value={33}>9am (next)</option>
+                                  <option value={34}>10am (next)</option>
+                                  <option value={35}>11am (next)</option>
+                                  <option value={36}>12pm (next)</option>
+                                  <option value={37}>1pm (next)</option>
                                 </select>
                               </div>
-
-                              {/* Team filter for this window */}
-                              <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
-                                <span style={{ fontSize: 11, color: "#a09488" }}>Team:</span>
+                              {/* Team filter */}
+                              <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+                                <span style={{ fontSize: 11, color: "#a09488", marginRight: 2 }}>Team:</span>
                                 <button
                                   onClick={() => setTeamWindows(tws => tws.map((t, i) => i === wi ? {...t, teamIdx: null} : t))}
-                                  style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, cursor: "pointer", fontWeight: 600,
+                                  style={{ padding: "2px 7px", borderRadius: 4, fontSize: 11, cursor: "pointer", fontWeight: 600,
                                     background: tw.teamIdx === null ? "#1a1a1a" : "#fff",
                                     color: tw.teamIdx === null ? "#fff" : "#8a8178",
                                     border: `1.5px solid ${tw.teamIdx === null ? "#1a1a1a" : "#ddd9d3"}` }}>All</button>
                                 {teams.map((t, ti) => (
                                   <button key={ti}
                                     onClick={() => setTeamWindows(tws => tws.map((tw2, i) => i === wi ? {...tw2, teamIdx: tw2.teamIdx === ti ? null : ti} : tw2))}
-                                    style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, cursor: "pointer", fontWeight: 600,
+                                    style={{ padding: "2px 7px", borderRadius: 4, fontSize: 11, cursor: "pointer", fontWeight: 600,
                                       background: tw.teamIdx === ti ? TEAM_COLORS[ti % TEAM_COLORS.length] : "#fff",
                                       color: tw.teamIdx === ti ? "#fff" : "#8a8178",
                                       border: `1.5px solid ${tw.teamIdx === ti ? TEAM_COLORS[ti % TEAM_COLORS.length] : "#ddd9d3"}` }}>{t.name}</button>
                                 ))}
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* ── RIGHT PANEL — results ── */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-                      {teamWindows.map((tw, wi) => {
-                        const { coversDays, dayResults } = getWindowResults(tw);
-                        if (coversDays.length === 0) return null;
-                        return (
-                          <div key={tw.id}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                              <div style={{ width: 12, height: 12, borderRadius: 3, background: tw.color, flexShrink: 0 }} />
-                              <div style={{ fontSize: 14, fontWeight: 700, color: "#1a1a1a" }}>{tw.name}</div>
-                              <div style={{ fontSize: 11.5, color: "#a09488" }}>
-                                {HOURS[tw.startHour]} – {tw.endHour < 24 ? HOURS[tw.endHour] : "12am+"} &nbsp;·&nbsp;
-                                {tw.teamIdx !== null ? teams[tw.teamIdx]?.name : "All teams"}
-                              </div>
-                            </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
-                              {coversDays.map(day => (
-                                <ShiftCard key={day} day={day}
-                                  shifts={dayResults[day].shifts}
-                                  totalAgentHours={dayResults[day].totalAgentHours}
-                                  windowStart={tw.startHour} windowEnd={tw.endHour}
-                                  color={tw.color} />
-                              ))}
+                            {/* Results for this window */}
+                            <div style={{ flex: 1, padding: 14, display: "flex", gap: 10, flexWrap: "wrap", alignContent: "flex-start" }}>
+                              {coversDays.length === 0
+                                ? <div style={{ fontSize: 12, color: "#c0b8b0", alignSelf: "center", padding: "0 12px" }}>Select days to see shifts</div>
+                                : coversDays.map(day => (
+                                    <ShiftCard key={day} day={day}
+                                      shifts={dayResults[day].shifts}
+                                      totalAgentHours={dayResults[day].totalAgentHours}
+                                      windowStart={tw.startHour} windowEnd={tw.endHour}
+                                      color={tw.color} />
+                                  ))
+                              }
                             </div>
                           </div>
-                        );
-                      })}
-                      {teamWindows.length === 0 && (
-                        <div style={{ padding: 40, textAlign: "center", color: "#a09488", fontSize: 13, background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10 }}>
-                          Add a team window on the left to see shift suggestions
                         </div>
-                      )}
-                    </div>
+                      );
+                    })}
                   </div>
+
                 </div>
               );
             })()}

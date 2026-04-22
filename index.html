@@ -15,7 +15,9 @@
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: #f0ede8; }
     ::-webkit-scrollbar-thumb { background: #d0cbc4; border-radius: 3px; }
-    input[type=number]::-webkit-inner-spin-button { opacity: 0.5; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
     .tab { background:none; border:none; cursor:pointer; font-family:inherit; font-size:13px; font-weight:500; padding:11px 16px; color:#9a918a; border-bottom:2px solid transparent; transition:all 0.15s; }
     .tab.on { color:#e8590c; border-bottom-color:#e8590c; }
     .tab:hover:not(.on) { color:#333; }
@@ -154,23 +156,45 @@
         reader.onload = ev => {
           try {
             const text = ev.target.result;
-            const rows = text.trim().split(/\r?\n/).map(r => r.split(/,|\t/));
-            const headerRow = rows[0].map(c => c.trim().toLowerCase());
+            const rows = text.trim().split(/\r?\n/).map(r => r.split(/,/).map(c => c.trim()));
+            const headerRow = rows[0].map(c => c.toLowerCase());
             const newVols = defaultVolumes();
             let parsed = 0;
-            for (let r = 1; r < rows.length; r++) {
-              const dayCell = rows[r][0]?.trim();
-              const dayKey = DAYS.find(d => d.toLowerCase() === dayCell?.toLowerCase()?.slice(0, 3));
-              if (!dayKey) continue;
-              for (let c = 1; c < rows[r].length; c++) {
-                const hourKey = HOURS.find(h => h.toLowerCase() === headerRow[c]);
+
+            // Detect format by checking if first data cell is an hour label (e.g. "8am")
+            const firstDataCell = rows[1]?.[0]?.toLowerCase();
+            const isHoursAsRows = HOURS.some(h => h === firstDataCell);
+
+            if (isHoursAsRows) {
+              // Format: header = [title, Mon, Tue, ...], rows = [8am, 64, 57, ...]
+              const dayHeaders = headerRow.slice(1).map(c => DAYS.find(d => d.toLowerCase() === c.slice(0,3)));
+              for (let r = 1; r < rows.length; r++) {
+                const hourKey = HOURS.find(h => h === rows[r][0]?.toLowerCase());
                 if (!hourKey) continue;
-                newVols[dayKey][hourKey] = rows[r][c]?.trim() || "";
-                parsed++;
+                for (let c = 1; c < rows[r].length; c++) {
+                  const dayKey = dayHeaders[c - 1];
+                  if (!dayKey) continue;
+                  const val = rows[r][c];
+                  if (val !== "" && !isNaN(val)) { newVols[dayKey][hourKey] = val; parsed++; }
+                }
+              }
+            } else {
+              // Format: header = [title, 12am, 1am ...], rows = [Mon, 7, 5, ...]
+              for (let r = 1; r < rows.length; r++) {
+                const dayKey = DAYS.find(d => d.toLowerCase() === rows[r][0]?.toLowerCase()?.slice(0,3));
+                if (!dayKey) continue;
+                for (let c = 1; c < rows[r].length; c++) {
+                  const hourKey = HOURS.find(h => h === headerRow[c]);
+                  if (!hourKey) continue;
+                  const val = rows[r][c];
+                  if (val !== "" && !isNaN(val)) { newVols[dayKey][hourKey] = val; parsed++; }
+                }
               }
             }
-            if (parsed === 0) { setUploadError("Could not parse. Expected: Day, 12am, 1am … 11pm"); return; }
+
+            if (parsed === 0) { setUploadError("Could not parse file — check format."); return; }
             setVolumes(newVols);
+            setUploadError("");
           } catch { setUploadError("Failed to read file."); }
         };
         reader.readAsText(file);
@@ -213,7 +237,7 @@
 
           {/* Tabs */}
           <div style={{ background: "#fff", borderBottom: "1px solid #e5e2dd", padding: "0 28px", display: "flex", gap: 2 }}>
-            {[["input","① Volume Input"],["results","② Weekly Grid"],["summary","③ Summary"]].map(([id, label]) => (
+            {[["input","① Volume Input"],["summary","② Summary"]].map(([id, label]) => (
               <button key={id} className={`tab ${activeTab === id ? "on" : ""}`} onClick={() => setActiveTab(id)}>{label}</button>
             ))}
           </div>
@@ -270,12 +294,12 @@
                   </div>
                 </div>
 
-                {/* Volume entry grid */}
+                {/* Volume entry grid — full weekly heat-map with editable inputs */}
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 }}>
                     <div>
-                      <div className="lxs" style={{ marginBottom: 3 }}>Call Volumes — calls per hour, per day</div>
-                      <div style={{ fontSize: 11.5, color: "#a09488" }}>Enter volumes below — required agents calculate live</div>
+                      <div className="lxs" style={{ marginBottom: 3 }}>Call Volumes — enter calls per hour for each day</div>
+                      <div style={{ fontSize: 11.5, color: "#a09488" }}>Type directly into any cell. Agents required shown live in the grid below.</div>
                     </div>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       {uploadError && <span style={{ fontSize: 11, color: "#e03131" }}>{uploadError}</span>}
@@ -283,145 +307,97 @@
                       <input ref={fileRef} type="file" accept=".csv,.tsv,.txt" style={{ display: "none" }} onChange={handleFileUpload} />
                     </div>
                   </div>
+
+                  {/* Show/Team toggles — identical to Weekly Grid tab */}
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12, color: "#8a8178", fontWeight: 500 }}>Show:</span>
+                    <button className={`tgb ${resultView === "agents" ? "on" : ""}`} onClick={() => setResultView("agents")}>Agents required</button>
+                    <button className={`tgb ${resultView === "calls" ? "on" : ""}`} onClick={() => setResultView("calls")}>Call volumes</button>
+                    <div style={{ width: 1, height: 22, background: "#e5e2dd", margin: "0 4px" }} />
+                    <span style={{ fontSize: 12, color: "#8a8178", fontWeight: 500 }}>Team:</span>
+                    <button className={`tgb ${selectedTeam === null ? "on" : ""}`} onClick={() => setSelectedTeam(null)}>All</button>
+                    {teams.map((t, i) => (
+                      <button key={i} className={`tgb ${selectedTeam === i ? "on" : ""}`}
+                        style={selectedTeam === i ? { background: TEAM_COLORS[i % TEAM_COLORS.length], borderColor: TEAM_COLORS[i % TEAM_COLORS.length] } : {}}
+                        onClick={() => setSelectedTeam(selectedTeam === i ? null : i)}>{t.name}</button>
+                    ))}
+                  </div>
+
+                  {/* Stat chips */}
+                  <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                    {[["Prod. mins/hr",`${agentProdMinutes.toFixed(1)} min`],["AHT",`${params.aht} min`],["Shrinkage",`${params.shrinkage}%`],["Admin",`${params.adminTime} min`],["Week calls",grandTotal.toLocaleString()]].map(([l,v]) => (
+                      <div key={l} className="chip"><span style={{ color: "#a09488" }}>{l}: </span><span style={{ color: "#e8590c", fontWeight: 700 }}>{v}</span></div>
+                    ))}
+                  </div>
+
+                  {/* Heat-map grid with editable volume inputs */}
                   <div style={{ ...card, overflow: "hidden" }}>
-                    <div style={{ overflowX: "auto" }}>
-                      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+                    <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "70vh" }}>
+                      <table className="wt">
                         <thead>
-                          <tr style={{ background: "#f5f3f0" }}>
-                            <th style={{ padding: "8px 14px", textAlign: "left", fontSize: 10.5, fontWeight: 700, color: "#a09488", letterSpacing: "0.06em", textTransform: "uppercase", borderBottom: "1.5px solid #e5e2dd", whiteSpace: "nowrap" }}>HOUR</th>
-                            {DAYS.map(d => (
-                              <th key={d} colSpan={2} style={{ padding: "8px 10px", textAlign: "center", fontSize: 10.5, fontWeight: 700, color: "#5a524c", letterSpacing: "0.05em", textTransform: "uppercase", borderBottom: "1.5px solid #e5e2dd", borderLeft: "1px solid #ece8e2" }}>{d}</th>
-                            ))}
-                          </tr>
-                          <tr style={{ background: "#faf9f7" }}>
-                            <td style={{ borderBottom: "1px solid #e5e2dd", padding: "3px 14px" }} />
-                            {DAYS.map(d => (
-                              <React.Fragment key={d}>
-                                <td style={{ padding: "3px 6px", borderBottom: "1px solid #e5e2dd", borderLeft: "1px solid #ece8e2", fontSize: 10, color: "#a09488", textAlign: "center", fontWeight: 600 }}>Calls</td>
-                                <td style={{ padding: "3px 6px", borderBottom: "1px solid #e5e2dd", fontSize: 10, color: "#e8590c", textAlign: "center", fontWeight: 600 }}>Agents</td>
-                              </React.Fragment>
-                            ))}
+                          <tr>
+                            <th className="hc">Hour</th>
+                            {DAYS.map(d => <th key={d} style={{ minWidth: 100 }}>{d}</th>)}
+                            <th style={{ minWidth: 70, color: "#e8590c" }}>Row max</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {HOURS.map((h, hi) => (
-                            <tr key={h} style={{ background: hi % 2 === 0 ? "#fff" : "#fdfcfb" }}>
-                              <td style={{ padding: "4px 14px", color: "#8a8178", whiteSpace: "nowrap", fontWeight: 500, fontSize: 11.5, borderBottom: "1px solid #f3f0ec" }}>{h}</td>
-                              {DAYS.map(d => {
-                                const calls = parseFloat(volumes[d][h]) || 0;
-                                return (
-                                  <React.Fragment key={d}>
-                                    <td style={{ padding: "3px 5px", borderLeft: "1px solid #ece8e2", borderBottom: "1px solid #f3f0ec" }}>
-                                      <input type="number" min={0} className="vi" value={volumes[d][h]} onChange={e => setVol(d, h, e.target.value)} placeholder="—" />
+                          {HOURS.map(h => {
+                            const rowVals = DAYS.map(d => cellValue(d, h) || 0);
+                            const rowMax = Math.max(0, ...rowVals);
+                            return (
+                              <tr key={h}>
+                                <td className="hl">{h}</td>
+                                {DAYS.map(d => {
+                                  const val = cellValue(d, h);
+                                  const bg = cellHeat(d, h);
+                                  return (
+                                    <td key={d} style={{ background: bg, padding: "2px 4px" }}>
+                                      {resultView === "calls"
+                                        ? <input type="number" min={0} className="vi" style={{ width: "100%", background: "transparent", border: "1px solid rgba(0,0,0,0.08)" }}
+                                            value={volumes[d][h]} onChange={e => setVol(d, h, e.target.value)} placeholder="—" />
+                                        : val > 0
+                                          ? <div className="ci">{formatNum(val)}</div>
+                                          : <div className="ce">—</div>
+                                      }
                                     </td>
-                                    <td style={{ padding: "4px 8px", textAlign: "right", borderBottom: "1px solid #f3f0ec", fontWeight: 600, color: calls > 0 ? "#e8590c" : "#d0cbc4", fontSize: 12 }}>
-                                      {calls > 0 ? formatNum(results[d][h].agents) : "—"}
-                                    </td>
-                                  </React.Fragment>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                          <tr style={{ background: "#f5f3f0", borderTop: "1.5px solid #e5e2dd" }}>
-                            <td style={{ padding: "7px 14px", fontWeight: 700, fontSize: 10.5, color: "#5a524c", letterSpacing: "0.04em", textTransform: "uppercase" }}>Total / Peak</td>
-                            {DAYS.map(d => (
-                              <React.Fragment key={d}>
-                                <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600, color: "#5a524c", fontSize: 12, borderLeft: "1px solid #e5e2dd" }}>{results[d]._dayTotal || "—"}</td>
-                                <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: "#e8590c", fontSize: 12 }}>{results[d]._peakAgents > 0 ? results[d]._peakAgents : "—"}</td>
-                              </React.Fragment>
-                            ))}
+                                  );
+                                })}
+                                <td style={{ background: rowMax > 0 ? "rgba(232,89,12,0.07)" : "transparent" }}>
+                                  {rowMax > 0 ? <div className="ci" style={{ color: "#e8590c" }}>{resultView === "agents" ? formatNum(rowMax) : rowMax}</div> : <div className="ce">—</div>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          <tr className="tr-tot">
+                            <td className="hl" style={{ fontWeight: 700, fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "#5a524c" }}>
+                              {resultView === "agents" ? "Peak agents" : "Day total"}
+                            </td>
+                            {DAYS.map(d => {
+                              const val = resultView === "agents"
+                                ? (selectedTeam === null ? results[d]._peakAgents : Math.max(0, ...HOURS.map(h => results[d][h].teamSplit[selectedTeam]?.agents || 0)))
+                                : results[d]._dayTotal;
+                              return (
+                                <td key={d} style={{ padding: "8px", color: val > 0 ? "#e8590c" : "#c8c0b8" }}>
+                                  {val > 0 ? (resultView === "agents" ? formatNum(val) : val.toLocaleString()) : "—"}
+                                </td>
+                              );
+                            })}
+                            <td style={{ padding: "8px", color: "#e8590c" }}>
+                              {resultView === "agents"
+                                ? formatNum(Math.max(0, ...DAYS.map(d => selectedTeam === null ? results[d]._peakAgents : Math.max(0, ...HOURS.map(h => results[d][h].teamSplit[selectedTeam]?.agents || 0)))))
+                                : grandTotal.toLocaleString()}
+                            </td>
                           </tr>
                         </tbody>
                       </table>
                     </div>
                   </div>
-                  <div style={{ marginTop: 7, fontSize: 11, color: "#a09488" }}>CSV: first row = Day, 12am, 1am … 11pm — each row = Mon/Tue/… then hourly volumes.</div>
-                </div>
-              </div>
-            )}
-
-            {/* ═══ RESULTS TAB ═══ */}
-            {activeTab === "results" && (
-              <div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12, color: "#8a8178", fontWeight: 500 }}>Show:</span>
-                  <button className={`tgb ${resultView === "agents" ? "on" : ""}`} onClick={() => setResultView("agents")}>Agents required</button>
-                  <button className={`tgb ${resultView === "calls" ? "on" : ""}`} onClick={() => setResultView("calls")}>Call volumes</button>
-                  <div style={{ width: 1, height: 22, background: "#e5e2dd", margin: "0 4px" }} />
-                  <span style={{ fontSize: 12, color: "#8a8178", fontWeight: 500 }}>Team:</span>
-                  <button className={`tgb ${selectedTeam === null ? "on" : ""}`} onClick={() => setSelectedTeam(null)}>All</button>
-                  {teams.map((t, i) => (
-                    <button key={i} className={`tgb ${selectedTeam === i ? "on" : ""}`}
-                      style={selectedTeam === i ? { background: TEAM_COLORS[i % TEAM_COLORS.length], borderColor: TEAM_COLORS[i % TEAM_COLORS.length] } : {}}
-                      onClick={() => setSelectedTeam(selectedTeam === i ? null : i)}>{t.name}</button>
-                  ))}
-                </div>
-
-                <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-                  {[["Prod. mins/hr",`${agentProdMinutes.toFixed(1)} min`],["AHT",`${params.aht} min`],["Shrinkage",`${params.shrinkage}%`],["Admin",`${params.adminTime} min`],["Week calls",grandTotal.toLocaleString()]].map(([l,v]) => (
-                    <div key={l} className="chip"><span style={{ color: "#a09488" }}>{l}: </span><span style={{ color: "#e8590c", fontWeight: 700 }}>{v}</span></div>
-                  ))}
-                </div>
-
-                <div style={{ ...card, overflow: "hidden" }}>
-                  <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "70vh" }}>
-                    <table className="wt">
-                      <thead>
-                        <tr>
-                          <th className="hc">Hour</th>
-                          {DAYS.map(d => <th key={d} style={{ minWidth: 90 }}>{d}</th>)}
-                          <th style={{ minWidth: 70, color: "#e8590c" }}>Row max</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {HOURS.map(h => {
-                          const rowVals = DAYS.map(d => cellValue(d, h) || 0);
-                          const rowMax = Math.max(0, ...rowVals);
-                          return (
-                            <tr key={h}>
-                              <td className="hl">{h}</td>
-                              {DAYS.map(d => {
-                                const val = cellValue(d, h);
-                                return (
-                                  <td key={d} style={{ background: cellHeat(d, h) }}>
-                                    {val > 0 ? <div className="ci">{resultView === "agents" ? formatNum(val) : val}</div> : <div className="ce">—</div>}
-                                  </td>
-                                );
-                              })}
-                              <td style={{ background: rowMax > 0 ? "rgba(232,89,12,0.07)" : "transparent" }}>
-                                {rowMax > 0 ? <div className="ci" style={{ color: "#e8590c" }}>{resultView === "agents" ? formatNum(rowMax) : rowMax}</div> : <div className="ce">—</div>}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        <tr className="tr-tot">
-                          <td className="hl" style={{ fontWeight: 700, fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "#5a524c" }}>
-                            {resultView === "agents" ? "Peak agents" : "Day total"}
-                          </td>
-                          {DAYS.map(d => {
-                            const val = resultView === "agents"
-                              ? (selectedTeam === null ? results[d]._peakAgents : Math.max(0, ...HOURS.map(h => results[d][h].teamSplit[selectedTeam]?.agents || 0)))
-                              : results[d]._dayTotal;
-                            return (
-                              <td key={d} style={{ padding: "8px", color: val > 0 ? "#e8590c" : "#c8c0b8" }}>
-                                {val > 0 ? (resultView === "agents" ? formatNum(val) : val.toLocaleString()) : "—"}
-                              </td>
-                            );
-                          })}
-                          <td style={{ padding: "8px", color: "#e8590c" }}>
-                            {resultView === "agents"
-                              ? formatNum(Math.max(0, ...DAYS.map(d => selectedTeam === null ? results[d]._peakAgents : Math.max(0, ...HOURS.map(h => results[d][h].teamSplit[selectedTeam]?.agents || 0)))))
-                              : grandTotal.toLocaleString()}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
+                  <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: "#a09488" }}>
+                    <span>Heat intensity:</span>
+                    {[0.1,0.25,0.42,0.6].map((a,i) => <div key={i} style={{ width: 16, height: 16, borderRadius: 3, background: `rgba(232,89,12,${a})`, border: "1px solid #e5e2dd" }} />)}
+                    <span>low → high &nbsp;|&nbsp; Switch to "Call volumes" view to edit values directly in the grid</span>
                   </div>
-                </div>
-                <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: "#a09488" }}>
-                  <span>Heat intensity:</span>
-                  {[0.1,0.25,0.42,0.6].map((a,i) => <div key={i} style={{ width: 18, height: 18, borderRadius: 4, background: `rgba(232,89,12,${a})`, border: "1px solid #e5e2dd" }} />)}
-                  <span>low → high</span>
                 </div>
               </div>
             )}

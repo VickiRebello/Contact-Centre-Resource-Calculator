@@ -241,12 +241,12 @@
         // Totals row
         const totals = DAYS.map(d => {
           const val = resultView === "agents"
-            ? (selectedTeam === null ? results[d]._peakAgents : Math.max(0, ...HOURS.map(h => results[d][h].teamSplit[selectedTeam]?.agents || 0)))
+            ? HOURS.reduce((s,h) => s + (selectedTeam === null ? results[d][h].agents : (results[d][h].teamSplit[selectedTeam]?.agents || 0)), 0)
             : results[d]._dayTotal;
           return resultView === "agents" ? Math.ceil(val) : val;
         });
         const grandTotalCell = resultView === "agents"
-          ? Math.ceil(DAYS.reduce((s,d) => s + (selectedTeam === null ? results[d]._peakAgents : Math.max(0, ...HOURS.map(h => results[d][h].teamSplit[selectedTeam]?.agents || 0))), 0))
+          ? Math.ceil(DAYS.reduce((s,d) => s + HOURS.reduce((hs,h) => hs + (selectedTeam === null ? results[d][h].agents : (results[d][h].teamSplit[selectedTeam]?.agents || 0)), 0), 0))
           : grandTotal;
         lines.push(["Total", ...totals, grandTotalCell].join(","));
 
@@ -434,7 +434,7 @@
                             </td>
                             {DAYS.map(d => {
                               const val = resultView === "agents"
-                                ? (selectedTeam === null ? results[d]._peakAgents : Math.max(0, ...HOURS.map(h => results[d][h].teamSplit[selectedTeam]?.agents || 0)))
+                                ? HOURS.reduce((s,h) => s + (selectedTeam === null ? results[d][h].agents : (results[d][h].teamSplit[selectedTeam]?.agents || 0)), 0)
                                 : results[d]._dayTotal;
                               return (
                                 <td key={d} style={{ padding: "8px", color: val > 0 ? "#e8590c" : "#c8c0b8" }}>
@@ -444,7 +444,7 @@
                             })}
                             <td style={{ padding: "8px", color: "#e8590c" }}>
                               {resultView === "agents"
-                                ? Math.ceil(DAYS.reduce((s,d) => s + (selectedTeam === null ? results[d]._peakAgents : Math.max(0, ...HOURS.map(h => results[d][h].teamSplit[selectedTeam]?.agents || 0))), 0))
+                                ? Math.ceil(DAYS.reduce((s,d) => s + HOURS.reduce((hs,h) => hs + (selectedTeam === null ? results[d][h].agents : (results[d][h].teamSplit[selectedTeam]?.agents || 0)), 0), 0))
                                 : grandTotal.toLocaleString()}
                             </td>
                           </tr>

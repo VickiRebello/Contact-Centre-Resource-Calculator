@@ -205,7 +205,61 @@
         e.target.value = "";
       }
 
-      const weekSummary = DAYS.map(d => ({ day: d, totalCalls: results[d]._dayTotal, peakAgents: results[d]._peakAgents }));
+      function exportCSV() {
+        const teamLabel = selectedTeam !== null ? teams[selectedTeam].name : "All Teams";
+        const viewLabel = resultView === "agents" ? "Agents Required" : "Call Volumes";
+        const lines = [];
+
+        // Metrics header
+        lines.push("HEADCOUNT PLANNER EXPORT");
+        lines.push(`View,${viewLabel}`);
+        lines.push(`Team Filter,${teamLabel}`);
+        lines.push(`Admin Time (mins/hr),${params.adminTime}`);
+        lines.push(`Target CPH,${params.cph}`);
+        lines.push(`Avg Handling Time (mins),${params.aht}`);
+        lines.push(`Shrinkage (%),${params.shrinkage}`);
+        lines.push(`Productive Mins/Agent/Hr,${agentProdMinutes.toFixed(1)}`);
+        teams.forEach(t => lines.push(`Team Split - ${t.name},${t.pct}%`));
+        lines.push("");
+
+        // Table header
+        lines.push(["Hour", ...DAYS, "Total"].join(","));
+
+        // Data rows
+        HOURS.forEach(h => {
+          const rowVals = DAYS.map(d => cellValue(d, h) || 0);
+          const rowTotal = resultView === "agents"
+            ? Math.ceil(rowVals.reduce((a,b)=>a+b,0))
+            : rowVals.reduce((a,b)=>a+b,0);
+          const cells = DAYS.map(d => {
+            const v = cellValue(d, h);
+            return v > 0 ? (resultView === "agents" ? Math.ceil(v) : v) : 0;
+          });
+          lines.push([h, ...cells, rowTotal].join(","));
+        });
+
+        // Totals row
+        const totals = DAYS.map(d => {
+          const val = resultView === "agents"
+            ? (selectedTeam === null ? results[d]._peakAgents : Math.max(0, ...HOURS.map(h => results[d][h].teamSplit[selectedTeam]?.agents || 0)))
+            : results[d]._dayTotal;
+          return resultView === "agents" ? Math.ceil(val) : val;
+        });
+        const grandTotalCell = resultView === "agents"
+          ? Math.ceil(DAYS.reduce((s,d) => s + (selectedTeam === null ? results[d]._peakAgents : Math.max(0, ...HOURS.map(h => results[d][h].teamSplit[selectedTeam]?.agents || 0))), 0))
+          : grandTotal;
+        lines.push(["Total", ...totals, grandTotalCell].join(","));
+
+        const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `headcount-planner-${resultView}-${teamLabel.replace(/\s+/g,"-").toLowerCase()}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+            const weekSummary = DAYS.map(d => ({ day: d, totalCalls: results[d]._dayTotal, peakAgents: results[d]._peakAgents }));
       const grandTotal = weekSummary.reduce((s, d) => s + d.totalCalls, 0);
 
       function cellValue(d, h) {
@@ -309,6 +363,7 @@
                       {uploadError && <span style={{ fontSize: 11, color: "#e03131" }}>{uploadError}</span>}
                       <button className="upb" onClick={() => fileRef.current.click()}>⬆ Upload CSV</button>
                       <input ref={fileRef} type="file" accept=".csv,.tsv,.txt" style={{ display: "none" }} onChange={handleFileUpload} />
+                      <button className="upb" style={{ background: "#fff8f5", borderColor: "#fbd5be", color: "#e8590c" }} onClick={exportCSV}>⬇ Export CSV</button>
                     </div>
                   </div>
 

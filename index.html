@@ -98,6 +98,15 @@
       const [uploadError, setUploadError] = useState("");
       const fileRef = useRef();
       const [shiftRules, setShiftRules] = useState({ minHours: "", maxHours: "" });
+      const [teamWindows, setTeamWindows] = useState([
+        { id: 1, name: "Day Reception",            color: "#1971c2", days: [0,1,2,3,4], startHour: 9,  endHour: 17, teamIdx: null },
+        { id: 2, name: "Out of Hours (Mon–Thu)",  color: "#e8590c", days: [0,1,2,3],   startHour: 17, endHour: 25, teamIdx: null },
+        { id: 3, name: "Out of Hours (Fri)",        color: "#e8590c", days: [4],         startHour: 15, endHour: 23, teamIdx: null },
+        { id: 4, name: "Out of Hours (Sat & Sun)",  color: "#e8590c", days: [5,6],       startHour: 7,  endHour: 23, teamIdx: null },
+        { id: 5, name: "Overnight (Tue–Fri)",     color: "#9c36b5", days: [1,2,3,4],   startHour: 1,  endHour: 9,  teamIdx: null },
+        { id: 6, name: "Overnight (Fri–Sat night)",color: "#9c36b5", days: [4,5],      startHour: 23, endHour: 31, teamIdx: null },
+        { id: 7, name: "Overnight (Sun night)",     color: "#9c36b5", days: [6],         startHour: 23, endHour: 33, teamIdx: null },
+      ]);
 
       const agentProdMinutes = 60 * (1 - params.shrinkage / 100) - params.adminTime;
 
@@ -471,191 +480,261 @@
             )}
 
             {/* ═══ SHIFTS TAB ═══ */}
-            {activeTab === "shifts" && (
-              <div>
-                {/* Rules panel */}
-                <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 22 }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <div style={{ background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10, padding: 18 }}>
-                      <div className="lxs">Shift Rules <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#b0a89e", fontSize: 10 }}>(all optional)</span></div>
-                      {[
-                        { key: "minHours", label: "Minimum shift duration (hrs)", placeholder: "e.g. 4" },
-                        { key: "maxHours", label: "Maximum shift duration (hrs)", placeholder: "e.g. 8" },
-                      ].map(({ key, label, placeholder }) => (
-                        <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                          <label style={{ fontSize: 12.5, color: "#5a524c" }}>{label}</label>
-                          <input type="number" min={1} max={24} className="pi"
-                            value={shiftRules[key]}
-                            placeholder={placeholder}
-                            onChange={e => setShiftRules(r => ({ ...r, [key]: e.target.value }))} />
-                        </div>
-                      ))}
-                      <div style={{ marginTop: 10, fontSize: 11, color: "#a09488", lineHeight: 1.7 }}>
-                        Defaults: min 4 hrs, max 12 hrs if left blank.<br />
-                        Team filter from the Volume tab applies here too.
-                      </div>
+            {activeTab === "shifts" && (() => {
+
+              // Hour index helpers
+              const hIdx = h => HOURS.indexOf(h);
+              const hLabel = idx => idx < 24 ? HOURS[idx] : HOURS[idx - 24] + "+";
+
+              // Build shifts for a given demand array + window
+              function buildShifts(demandArr, windowStart, windowEnd, minH, maxH) {
+                const raw = [];
+                let i = windowStart;
+                while (i < windowEnd) {
+                  if ((demandArr[i] || 0) === 0) { i++; continue; }
+                  let j = i;
+                  while (j < windowEnd && (demandArr[j] || 0) > 0) j++;
+                  let cursor = i;
+                  while (cursor < j) {
+                    let len = Math.min(maxH, j - cursor);
+                    if (len < minH) len = j - cursor < minH ? j - cursor : minH;
+                    const end = Math.min(cursor + len, windowEnd);
+                    const peak = Math.max(...demandArr.slice(cursor, end).filter(Boolean));
+                    if (peak > 0) raw.push({ start: cursor, end, duration: end - cursor, agents: peak });
+                    cursor += len;
+                  }
+                  i = j;
+                }
+                // merge adjacent same-agents within maxH
+                const merged = [];
+                raw.forEach(s => {
+                  const last = merged[merged.length - 1];
+                  if (last && last.end === s.start && last.agents === s.agents && (s.end - last.start) <= maxH)
+                    { last.end = s.end; last.duration = last.end - last.start; }
+                  else merged.push({...s});
+                });
+                return merged.map(s => ({
+                  ...s,
+                  startLabel: HOURS[s.start % 24],
+                  endLabel: hLabel(s.end),
+                }));
+              }
+
+              const minH = shiftRules.minHours !== "" ? parseInt(shiftRules.minHours) : 4;
+              const maxH = shiftRules.maxHours !== "" ? parseInt(shiftRules.maxHours) : 12;
+
+              // For each team-window, for each day it covers, build demand and shifts
+              function getWindowResults(tw) {
+                const startH = tw.startHour;
+                const endH = tw.endHour; // may be > 23 for overnight e.g. 25 = 1am next day
+                const coversDays = DAYS.filter((_, di) => tw.days.includes(di));
+                const dayResults = {};
+                coversDays.forEach(day => {
+                  // Build demand array 0-47 to handle overnight
+                  const demand = Array.from({length: 48}, (_, hi) => {
+                    const h = HOURS[hi % 24];
+                    const v = tw.teamIdx === null
+                      ? results[day][h].agents
+                      : (results[day][h].teamSplit[tw.teamIdx]?.agents || 0);
+                    return Math.ceil(v);
+                  });
+                  const shifts = buildShifts(demand, startH, endH, minH, maxH);
+                  const totalAgentHours = shifts.reduce((s, sh) => s + sh.agents * sh.duration, 0);
+                  dayResults[day] = { shifts, totalAgentHours };
+                });
+                return { coversDays, dayResults };
+              }
+
+              // ── Render ────────────────────────────────────────────────────
+              const ShiftCard = ({ day, shifts, totalAgentHours, windowStart, windowEnd, color }) => (
+                <div style={{ background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10, overflow: "hidden" }}>
+                  <div style={{ padding: "10px 14px 8px", borderBottom: "1px solid #f0ede8", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontSize: 15, fontWeight: 700 }}>{day}</div>
+                    <div style={{ fontSize: 11, color: "#a09488" }}>
+                      {shifts.length} shift{shifts.length !== 1 ? "s" : ""} · {totalAgentHours} agent-hrs
                     </div>
                   </div>
-
-                  {/* Suggested shifts per day */}
-                  <div>
-                    {(() => {
-                      const shifts = generateShifts(results, teams, shiftRules, selectedTeam);
-                      const teamLabel = selectedTeam !== null ? teams[selectedTeam].name : "All Teams";
-                      return (
-                        <div>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 14 }}>
-                            <div>
-                              <div className="lxs" style={{ marginBottom: 3 }}>Suggested Shift Patterns</div>
-                              <div style={{ fontSize: 11.5, color: "#a09488" }}>Based on agent demand · Team: <b style={{ color: "#1a1a1a" }}>{teamLabel}</b></div>
+                  {shifts.length === 0
+                    ? <div style={{ padding: "14px", fontSize: 12, color: "#c0b8b0", textAlign: "center" }}>No demand</div>
+                    : <div style={{ padding: "10px 14px" }}>
+                        <div style={{ position: "relative", height: 8, background: "#f5f3f0", borderRadius: 4, marginBottom: 10, overflow: "hidden" }}>
+                          {shifts.map((sh, si) => (
+                            <div key={si} style={{
+                              position: "absolute", top: 0, height: "100%",
+                              left: `${(sh.start / 24) * 100}%`,
+                              width: `${(sh.duration / 24) * 100}%`,
+                              background: color || `rgba(232,89,12,${0.4 + si * 0.15})`,
+                              borderRadius: 3, opacity: 0.7 + si * 0.1,
+                            }} />
+                          ))}
+                        </div>
+                        {shifts.map((sh, si) => (
+                          <div key={si} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: si < shifts.length - 1 ? "1px solid #f5f3f0" : "none" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                              <div style={{ width: 9, height: 9, borderRadius: 2, background: color || "#e8590c", flexShrink: 0, opacity: 0.7 + si * 0.1 }} />
+                              <span style={{ fontSize: 12.5, fontWeight: 600, color: "#1a1a1a" }}>{sh.startLabel} – {sh.endLabel}</span>
+                              <span style={{ fontSize: 11, color: "#a09488" }}>{sh.duration}hr</span>
                             </div>
-                            <div style={{ display: "flex", gap: 8 }}>
-                              <span style={{ fontSize: 12, color: "#8a8178", fontWeight: 500, alignSelf: "center" }}>Team:</span>
-                              <button className={`tgb ${selectedTeam === null ? "on" : ""}`} onClick={() => setSelectedTeam(null)}>All</button>
-                              {teams.map((t, i) => (
-                                <button key={i} className={`tgb ${selectedTeam === i ? "on" : ""}`}
-                                  style={selectedTeam === i ? { background: TEAM_COLORS[i % TEAM_COLORS.length], borderColor: TEAM_COLORS[i % TEAM_COLORS.length] } : {}}
-                                  onClick={() => setSelectedTeam(selectedTeam === i ? null : i)}>{t.name}</button>
+                            <div>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#e8590c" }}>{sh.agents}</span>
+                              <span style={{ fontSize: 11, color: "#a09488", marginLeft: 3 }}>agents</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                  }
+                </div>
+              );
+
+              return (
+                <div>
+                  <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 22 }}>
+
+                    {/* ── LEFT PANEL ── */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+                      {/* Shift rules */}
+                      <div style={{ background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10, padding: 16 }}>
+                        <div className="lxs">Shift Rules <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#b0a89e", fontSize: 10 }}>(optional)</span></div>
+                        {[
+                          { key: "minHours", label: "Min shift duration (hrs)", ph: "e.g. 4" },
+                          { key: "maxHours", label: "Max shift duration (hrs)", ph: "e.g. 8" },
+                        ].map(({ key, label, ph }) => (
+                          <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9 }}>
+                            <label style={{ fontSize: 12, color: "#5a524c" }}>{label}</label>
+                            <input type="number" min={1} max={24} className="pi" style={{ width: 70 }}
+                              value={shiftRules[key]} placeholder={ph}
+                              onChange={e => setShiftRules(r => ({ ...r, [key]: e.target.value }))} />
+                          </div>
+                        ))}
+                        <div style={{ fontSize: 11, color: "#a09488" }}>Defaults: 4hr min, 12hr max</div>
+                      </div>
+
+                      {/* Team windows */}
+                      <div style={{ background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10, padding: 16 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                          <div className="lxs" style={{ marginBottom: 0 }}>Team Windows</div>
+                          <button className="atb" onClick={() => setTeamWindows(tw => [...tw, {
+                            id: Date.now(), name: "New Window", color: "#888",
+                            days: [0,1,2,3,4], startHour: 9, endHour: 17, teamIdx: null
+                          }])}>+ Add</button>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                          {teamWindows.map((tw, wi) => (
+                            <div key={tw.id} style={{ background: "#faf9f7", border: "1px solid #ece8e2", borderRadius: 8, padding: 12 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                                <input className="ti" style={{ flex: 1, marginRight: 8, fontWeight: 600 }}
+                                  value={tw.name}
+                                  onChange={e => setTeamWindows(tws => tws.map((t, i) => i === wi ? {...t, name: e.target.value} : t))} />
+                                <input type="color" value={tw.color} style={{ width: 28, height: 28, border: "none", background: "none", cursor: "pointer", padding: 0 }}
+                                  onChange={e => setTeamWindows(tws => tws.map((t, i) => i === wi ? {...t, color: e.target.value} : t))} />
+                                <button className="rm" style={{ marginLeft: 4 }}
+                                  onClick={() => setTeamWindows(tws => tws.filter((_, i) => i !== wi))}>×</button>
+                              </div>
+
+                              {/* Days checkboxes */}
+                              <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>
+                                {DAYS.map((d, di) => (
+                                  <button key={d}
+                                    onClick={() => setTeamWindows(tws => tws.map((t, i) => i === wi ? {
+                                      ...t, days: t.days.includes(di) ? t.days.filter(x => x !== di) : [...t.days, di].sort()
+                                    } : t))}
+                                    style={{
+                                      padding: "2px 7px", borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                                      background: tw.days.includes(di) ? tw.color : "#fff",
+                                      color: tw.days.includes(di) ? "#fff" : "#8a8178",
+                                      border: `1.5px solid ${tw.days.includes(di) ? tw.color : "#ddd9d3"}`,
+                                    }}>{d}</button>
+                                ))}
+                              </div>
+
+                              {/* Hours */}
+                              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                                <span style={{ fontSize: 11, color: "#a09488", width: 32 }}>From</span>
+                                <select className="ti" style={{ flex: 1, fontSize: 11 }}
+                                  value={tw.startHour}
+                                  onChange={e => setTeamWindows(tws => tws.map((t, i) => i === wi ? {...t, startHour: parseInt(e.target.value)} : t))}>
+                                  {Array.from({length: 24}, (_, hi) => <option key={hi} value={hi}>{HOURS[hi]}</option>)}
+                                </select>
+                                <span style={{ fontSize: 11, color: "#a09488", width: 16, textAlign: "center" }}>to</span>
+                                <select className="ti" style={{ flex: 1, fontSize: 11 }}
+                                  value={tw.endHour}
+                                  onChange={e => setTeamWindows(tws => tws.map((t, i) => i === wi ? {...t, endHour: parseInt(e.target.value)} : t))}>
+                                  {Array.from({length: 24}, (_, hi) => <option key={hi+1} value={hi+1}>{hi + 1 < 24 ? HOURS[hi+1] : "12am (next)"}</option>)}
+                                  <option value={25}>1am (next)</option>
+                                  <option value={26}>2am (next)</option>
+                                  <option value={27}>3am (next)</option>
+                                  <option value={28}>4am (next)</option>
+                                  <option value={30}>6am (next)</option>
+                                  <option value={33}>9am (next)</option>
+                                </select>
+                              </div>
+
+                              {/* Team filter for this window */}
+                              <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
+                                <span style={{ fontSize: 11, color: "#a09488" }}>Team:</span>
+                                <button
+                                  onClick={() => setTeamWindows(tws => tws.map((t, i) => i === wi ? {...t, teamIdx: null} : t))}
+                                  style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, cursor: "pointer", fontWeight: 600,
+                                    background: tw.teamIdx === null ? "#1a1a1a" : "#fff",
+                                    color: tw.teamIdx === null ? "#fff" : "#8a8178",
+                                    border: `1.5px solid ${tw.teamIdx === null ? "#1a1a1a" : "#ddd9d3"}` }}>All</button>
+                                {teams.map((t, ti) => (
+                                  <button key={ti}
+                                    onClick={() => setTeamWindows(tws => tws.map((tw2, i) => i === wi ? {...tw2, teamIdx: tw2.teamIdx === ti ? null : ti} : tw2))}
+                                    style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, cursor: "pointer", fontWeight: 600,
+                                      background: tw.teamIdx === ti ? TEAM_COLORS[ti % TEAM_COLORS.length] : "#fff",
+                                      color: tw.teamIdx === ti ? "#fff" : "#8a8178",
+                                      border: `1.5px solid ${tw.teamIdx === ti ? TEAM_COLORS[ti % TEAM_COLORS.length] : "#ddd9d3"}` }}>{t.name}</button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── RIGHT PANEL — results ── */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+                      {teamWindows.map((tw, wi) => {
+                        const { coversDays, dayResults } = getWindowResults(tw);
+                        if (coversDays.length === 0) return null;
+                        return (
+                          <div key={tw.id}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                              <div style={{ width: 12, height: 12, borderRadius: 3, background: tw.color, flexShrink: 0 }} />
+                              <div style={{ fontSize: 14, fontWeight: 700, color: "#1a1a1a" }}>{tw.name}</div>
+                              <div style={{ fontSize: 11.5, color: "#a09488" }}>
+                                {HOURS[tw.startHour]} – {tw.endHour < 24 ? HOURS[tw.endHour] : "12am+"} &nbsp;·&nbsp;
+                                {tw.teamIdx !== null ? teams[tw.teamIdx]?.name : "All teams"}
+                              </div>
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+                              {coversDays.map(day => (
+                                <ShiftCard key={day} day={day}
+                                  shifts={dayResults[day].shifts}
+                                  totalAgentHours={dayResults[day].totalAgentHours}
+                                  windowStart={tw.startHour} windowEnd={tw.endHour}
+                                  color={tw.color} />
                               ))}
                             </div>
                           </div>
-
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
-                            {DAYS.map(day => {
-                              const dayShifts = shifts[day];
-                              const totalAgentHours = dayShifts.reduce((s, sh) => s + sh.agents * sh.duration, 0);
-                              return (
-                                <div key={day} style={{ background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10, overflow: "hidden" }}>
-                                  <div style={{ padding: "12px 16px 10px", borderBottom: "1px solid #f0ede8", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                    <div style={{ fontSize: 16, fontWeight: 700 }}>{day}</div>
-                                    <div style={{ fontSize: 11, color: "#a09488" }}>
-                                      {dayShifts.length} shift{dayShifts.length !== 1 ? "s" : ""} &nbsp;·&nbsp; {totalAgentHours} agent-hrs
-                                    </div>
-                                  </div>
-                                  {dayShifts.length === 0
-                                    ? <div style={{ padding: "16px", fontSize: 12, color: "#c0b8b0", textAlign: "center" }}>No demand</div>
-                                    : (
-                                      <div style={{ padding: "10px 14px" }}>
-                                        {/* Mini timeline bar */}
-                                        <div style={{ position: "relative", height: 10, background: "#f5f3f0", borderRadius: 5, marginBottom: 12, overflow: "hidden" }}>
-                                          {dayShifts.map((sh, si) => (
-                                            <div key={si} style={{
-                                              position: "absolute", top: 0, height: "100%",
-                                              left: `${(sh.start / 24) * 100}%`,
-                                              width: `${(sh.duration / 24) * 100}%`,
-                                              background: `rgba(232,89,12,${0.35 + (si % 3) * 0.2})`,
-                                              borderRadius: 3,
-                                            }} />
-                                          ))}
-                                        </div>
-                                        {/* Shift list */}
-                                        {dayShifts.map((sh, si) => (
-                                          <div key={si} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", borderBottom: si < dayShifts.length - 1 ? "1px solid #f5f3f0" : "none" }}>
-                                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                              <div style={{ width: 10, height: 10, borderRadius: 2, background: `rgba(232,89,12,${0.35 + (si % 3) * 0.2})`, flexShrink: 0 }} />
-                                              <span style={{ fontSize: 12.5, fontWeight: 600, color: "#1a1a1a" }}>{sh.startLabel} – {sh.endLabel}</span>
-                                              <span style={{ fontSize: 11, color: "#a09488" }}>{sh.duration}hr</span>
-                                            </div>
-                                            <div style={{ textAlign: "right" }}>
-                                              <span style={{ fontSize: 13, fontWeight: 700, color: "#e8590c" }}>{sh.agents}</span>
-                                              <span style={{ fontSize: 11, color: "#a09488", marginLeft: 3 }}>agents</span>
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )
-                                  }
-                                </div>
-                              );
-                            })}
-                          </div>
+                        );
+                      })}
+                      {teamWindows.length === 0 && (
+                        <div style={{ padding: 40, textAlign: "center", color: "#a09488", fontSize: 13, background: "#fff", border: "1px solid #e5e2dd", borderRadius: 10 }}>
+                          Add a team window on the left to see shift suggestions
                         </div>
-                      );
-                    })()}
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
           </div>
         </div>
       );
-    }
-
-
-    // ── Shift pattern suggestion engine ──────────────────────────────────
-    function generateShifts(results, teams, shiftRules, selectedTeam) {
-      const minH = shiftRules.minHours !== "" ? parseInt(shiftRules.minHours) : 4;
-      const maxH = shiftRules.maxHours !== "" ? parseInt(shiftRules.maxHours) : 12;
-
-      // Build hourly demand array (0-23) per day
-      const shifts = {};
-      DAYS.forEach(day => {
-        const demand = HOURS.map((h, hi) => {
-          const v = selectedTeam === null
-            ? results[day][h].agents
-            : (results[day][h].teamSplit[selectedTeam]?.agents || 0);
-          return { hour: hi, agents: Math.ceil(v) };
-        });
-
-        // Greedy shift builder: scan demand, create shifts where agents needed
-        const dayShifts = [];
-        const covered = new Array(24).fill(0);
-
-        // Identify "demand blocks" — contiguous hours with >0 agents needed
-        let i = 0;
-        while (i < 24) {
-          if (demand[i].agents === 0) { i++; continue; }
-          // Find how long demand persists
-          let j = i;
-          while (j < 24 && demand[j].agents > 0) j++;
-          const blockLen = j - i;
-
-          // Split block into shifts respecting min/max
-          let cursor = i;
-          while (cursor < j) {
-            const remaining = j - cursor;
-            // Choose shift length: prefer maxH, but don't go below minH
-            let shiftLen = Math.min(maxH, remaining);
-            if (shiftLen < minH && remaining < minH) shiftLen = remaining; // allow short tail
-            else if (shiftLen < minH) shiftLen = minH;
-
-            const startH = cursor;
-            const endH = Math.min(cursor + shiftLen, 24);
-
-            // Peak agents needed in this window
-            const peakAgents = Math.max(...demand.slice(startH, endH).map(d => d.agents));
-            if (peakAgents > 0) {
-              dayShifts.push({
-                start: startH,
-                end: endH,
-                duration: endH - startH,
-                agents: peakAgents,
-                startLabel: HOURS[startH],
-                endLabel: endH < 24 ? HOURS[endH] : "12am+",
-              });
-            }
-            cursor += shiftLen;
-          }
-          i = j;
-        }
-
-        // Merge adjacent same-agent shifts if within max duration
-        const merged = [];
-        dayShifts.forEach(s => {
-          const last = merged[merged.length - 1];
-          if (last && last.end === s.start && last.agents === s.agents && (s.end - last.start) <= maxH) {
-            last.end = s.end;
-            last.duration = last.end - last.start;
-            last.endLabel = s.endLabel;
-          } else {
-            merged.push({ ...s });
-          }
-        });
-
-        shifts[day] = merged;
-      });
-      return shifts;
     }
 
     ReactDOM.createRoot(document.getElementById("root")).render(<App />);
